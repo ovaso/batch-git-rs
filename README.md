@@ -122,3 +122,7 @@ cargo test
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --release
 ```
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)。
