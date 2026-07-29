@@ -561,13 +561,37 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
     git(&repository, ["checkout", "main"]);
     git(&repository, ["reset", "--hard", "origin/main"]);
     batch_git(workspace.path())
+        .env("CURRENT_FEATURE_BRANCH", "feature")
         .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "true")
-        .args(["merge", "feature"])
+        .args(["merge", "--feature"])
         .assert()
         .success()
         .stdout(predicate::str::contains("service-merge  ok"));
     assert!(repository.join("REMOTE.md").is_file());
     assert!(repository.join("FEATURE.md").is_file());
+}
+
+#[test]
+fn merge_feature_without_an_environment_value_is_a_no_op() {
+    let directory = tempfile::tempdir().unwrap();
+
+    batch_git(directory.path())
+        .env_remove("CURRENT_FEATURE_BRANCH")
+        .args(["merge", "--feature"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "CURRENT_FEATURE_BRANCH is not set; nothing to merge",
+        ));
+
+    batch_git(directory.path())
+        .env("CURRENT_FEATURE_BRANCH", "feature")
+        .args(["merge", "--feature", "main"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "the argument '--feature' cannot be used with '[BRANCH]'",
+        ));
 }
 
 #[test]
@@ -828,6 +852,107 @@ fn sync_can_target_one_repository_or_the_whole_workspace() {
 }
 
 #[test]
+fn push_skips_missing_upstream_and_only_creates_it_when_requested() {
+    let fixture = Fixture::new("push-service");
+    let workspace = tempfile::tempdir().unwrap();
+    batch_git(workspace.path())
+        .args(["clone", fixture.remote.to_str().unwrap(), "push-service"])
+        .assert()
+        .success();
+
+    let repository = workspace.path().join("push-service");
+    git(&repository, ["config", "user.name", "Batch Git Tests"]);
+    git(
+        &repository,
+        ["config", "user.email", "batch-git@example.invalid"],
+    );
+    git(&repository, ["checkout", "-b", "local-feature"]);
+    fs::write(repository.join("LOCAL_FEATURE.md"), "first\n").unwrap();
+    git(&repository, ["add", "LOCAL_FEATURE.md"]);
+    git(&repository, ["commit", "-m", "local feature"]);
+
+    batch_git(workspace.path())
+        .args(["push"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "push-service  skipped  current branch has no upstream",
+        ));
+    assert!(!git_ref_exists(&fixture.remote, "refs/heads/local-feature"));
+
+    batch_git(workspace.path())
+        .args(["push", "--remote", "origin"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains("--set-upstream"));
+
+    batch_git(workspace.path())
+        .args(["push", "-u", "--dry-run"])
+        .assert()
+        .success();
+    assert!(!git_ref_exists(&fixture.remote, "refs/heads/local-feature"));
+    assert!(!git_succeeds(&repository, ["rev-parse", "@{upstream}"]));
+
+    batch_git(workspace.path())
+        .args(["push", "--set-upstream"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("push-service  ok"));
+    assert!(git_ref_exists(&fixture.remote, "refs/heads/local-feature"));
+    assert_eq!(
+        git_output(&repository, ["rev-parse", "--abbrev-ref", "@{upstream}"]),
+        "origin/local-feature"
+    );
+
+    let remote_before = git_output(
+        workspace.path(),
+        [
+            "--git-dir",
+            fixture.remote.to_str().unwrap(),
+            "rev-parse",
+            "refs/heads/local-feature",
+        ],
+    );
+    fs::write(repository.join("LOCAL_FEATURE.md"), "second\n").unwrap();
+    git(&repository, ["add", "LOCAL_FEATURE.md"]);
+    git(&repository, ["commit", "-m", "second local feature"]);
+
+    batch_git(workspace.path())
+        .args(["push", "--dry-run"])
+        .assert()
+        .success();
+    assert_eq!(
+        git_output(
+            workspace.path(),
+            [
+                "--git-dir",
+                fixture.remote.to_str().unwrap(),
+                "rev-parse",
+                "refs/heads/local-feature",
+            ],
+        ),
+        remote_before
+    );
+
+    batch_git(workspace.path())
+        .args(["push"])
+        .assert()
+        .success();
+    assert_eq!(
+        git_output(
+            workspace.path(),
+            [
+                "--git-dir",
+                fixture.remote.to_str().unwrap(),
+                "rev-parse",
+                "refs/heads/local-feature",
+            ],
+        ),
+        git_output(&repository, ["rev-parse", "HEAD"])
+    );
+}
+
+#[test]
 fn schedule_plans_runs_and_generates_native_definitions() {
     let fixture = Fixture::new("scheduled-service");
     let workspace = tempfile::tempdir().unwrap();
@@ -972,6 +1097,40 @@ repositories = ["scheduled-service"]
         ));
 
     batch_git(workspace.path())
+        .env("BATCH_GIT_STATE_DIR", workspace.path().join("state"))
+        .args([
+            "schedule",
+            "generate",
+            "nightly-sync",
+            "--platform",
+            "windows",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("<CalendarTrigger>"))
+        .stdout(predicate::str::contains(
+            "<StartBoundary>2000-01-01T02:30:00</StartBoundary>",
+        ))
+        .stdout(predicate::str::contains(
+            "<Arguments>schedule run nightly-sync</Arguments>",
+        ));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_STATE_DIR", workspace.path().join("state"))
+        .args([
+            "schedule",
+            "generate",
+            "business-hours-sync",
+            "--platform",
+            "windows",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "Windows Task Scheduler does not support cron schedules",
+        ));
+
+    batch_git(workspace.path())
         .env("BATCH_GIT_SCHEDULE_LOG", "false")
         .args([
             "schedule",
@@ -991,6 +1150,7 @@ repositories = ["scheduled-service"]
 
     batch_git(workspace.path())
         .env("BATCH_GIT_SCHEDULE_LOG", "false")
+        .env("BATCH_GIT_TZ", "Asia/Shanghai")
         .args([
             "schedule",
             "generate",
@@ -1000,8 +1160,60 @@ repositories = ["scheduled-service"]
         ])
         .assert()
         .success()
+        .stdout(predicate::str::contains(
+            "Environment=\"BATCH_GIT_TZ=Asia/Shanghai\"",
+        ))
+        .stdout(predicate::str::contains(
+            "OnCalendar=*-*-* 02:30:00 Asia/Shanghai",
+        ))
         .stdout(predicate::str::contains("StandardOutput=null"))
         .stdout(predicate::str::contains("StandardError=null"));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_TZ", "Asia/Shanghai")
+        .args([
+            "schedule",
+            "generate",
+            "nightly-sync",
+            "--platform",
+            "launchd",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "<key>BATCH_GIT_TZ</key><string>Asia/Shanghai</string>",
+        ));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_STATE_DIR", workspace.path().join("state"))
+        .env("BATCH_GIT_TZ", "Asia/Shanghai")
+        .args([
+            "schedule",
+            "generate",
+            "nightly-sync",
+            "--platform",
+            "windows",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "<Arguments>schedule native-run nightly-sync --timezone Asia/Shanghai</Arguments>",
+        ));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_TZ", "Asia / Shanghai")
+        .args([
+            "schedule",
+            "generate",
+            "nightly-sync",
+            "--platform",
+            "systemd",
+        ])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "BATCH_GIT_TZ must not contain whitespace",
+        ));
 
     batch_git(workspace.path())
         .env("BATCH_GIT_SCHEDULE_LOG", "invalid")
@@ -1276,4 +1488,29 @@ fn git_output<const N: usize>(directory: &Path, args: [&str; N]) -> String {
         .expect("run git");
     assert!(output.status.success());
     String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+fn git_succeeds<const N: usize>(directory: &Path, args: [&str; N]) -> bool {
+    Command::new("git")
+        .current_dir(directory)
+        .args(args)
+        .output()
+        .expect("run git")
+        .status
+        .success()
+}
+
+fn git_ref_exists(git_directory: &Path, reference: &str) -> bool {
+    Command::new("git")
+        .args([
+            "--git-dir",
+            git_directory.to_str().unwrap(),
+            "show-ref",
+            "--verify",
+            "--quiet",
+            reference,
+        ])
+        .status()
+        .expect("run git")
+        .success()
 }

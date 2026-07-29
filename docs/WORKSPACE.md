@@ -31,7 +31,6 @@ name = "nightly-sync"
 enabled = true
 action = "sync"
 at = "02:30"
-timezone = "local"
 overlap = "skip"
 
 [schedules.scope]
@@ -83,8 +82,9 @@ batch-git info
 | `BATCH_GIT_WORKSPACE` | 未设置 | 普通命令使用的绝对工作区路径 |
 | `BATCH_GIT_STATE_DIR` | 平台用户 state 目录 | schedule 注册状态和日志根目录 |
 | `BATCH_GIT_SCHEDULE_LOG` | `false` | 注册任务是否记录 stdout/stderr |
+| `BATCH_GIT_TZ` | 系统时区 | schedule 任务时区；设置后需重新 register，不允许空白字符 |
 | `BATCH_GIT_REMOTE` | 未设置 | checkout/merge 的远端消歧名称 |
-| `CURRENT_FEATURE_BRANCH` | 未设置 | `checkout --feature` / `cf` 的目标分支 |
+| `CURRENT_FEATURE_BRANCH` | 未设置 | `checkout --feature` / `cf` 的目标分支，以及 `merge --feature` 的源分支 |
 | `BATCH_GIT_MERGE_UPDATE_CURRENT` | `false` | merge 前是否 ff-only 更新当前分支 |
 | `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | 全仓库 Git 透传是否展示成功输出 |
 | `NO_COLOR` | 未设置 | 非空时禁用颜色 |
@@ -98,6 +98,8 @@ batch-git info
 
 - 显式设置：`BATCH_GIT_STATE_DIR`；
 - macOS 默认：用户 Library 下的 Application Support 状态目录；
+- Windows 默认：`%LOCALAPPDATA%\batch-git`，不可用时回退到用户目录下的
+  `AppData\Local\batch-git`；
 - Linux/Unix 默认：`$XDG_STATE_HOME/batch-git`，未设置时使用
   `$HOME/.local/state/batch-git`。
 

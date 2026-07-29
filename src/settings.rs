@@ -49,6 +49,26 @@ pub(crate) fn schedule_log_enabled() -> Result<bool> {
     }
 }
 
+pub(crate) fn schedule_timezone() -> Result<Option<String>> {
+    match std::env::var("BATCH_GIT_TZ") {
+        Ok(value) => {
+            let value = value.trim();
+            if value.chars().any(char::is_whitespace) {
+                bail!("BATCH_GIT_TZ must not contain whitespace");
+            }
+            if !value.chars().all(|character| {
+                character.is_ascii_alphanumeric()
+                    || matches!(character, '/' | '_' | '+' | '-' | ':' | '.')
+            }) {
+                bail!("BATCH_GIT_TZ contains unsupported characters: {value}");
+            }
+            Ok((!value.is_empty()).then(|| value.to_owned()))
+        }
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+
 pub(crate) fn merge_update_current(cli_value: Option<bool>) -> Result<bool> {
     if let Some(value) = cli_value {
         return Ok(value);

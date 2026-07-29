@@ -1,10 +1,10 @@
 //! Schedule planning, execution, native definition generation, and registration.
 
 use std::env;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -12,9 +12,9 @@ use tempfile::NamedTempFile;
 
 use crate::cli::{
     ScheduleActionValue, ScheduleAddArgs, ScheduleArgs, ScheduleCommand, ScheduleDoctorArgs,
-    ScheduleListArgs, ScheduleNameArgs, ScheduleOverlapValue, SchedulePlatform,
-    SchedulePlatformArgs, ScheduleRegisterArgs, ScheduleRemoveArgs, ScheduleRunArgs,
-    ScheduleUnregisterArgs, ScheduleUpdateArgs,
+    ScheduleListArgs, ScheduleNameArgs, ScheduleNativeRunArgs, ScheduleOverlapValue,
+    SchedulePlatform, SchedulePlatformArgs, ScheduleRegisterArgs, ScheduleRemoveArgs,
+    ScheduleRunArgs, ScheduleUnregisterArgs, ScheduleUpdateArgs,
 };
 use crate::cron::CronExpression;
 use crate::model::{
@@ -31,6 +31,7 @@ pub(crate) fn dispatch(arguments: ScheduleArgs, jobs: usize, verbose: bool) -> R
         ScheduleCommand::Plan(arguments) => plan(arguments),
         ScheduleCommand::Run(arguments) => run(arguments, jobs, verbose),
         ScheduleCommand::List(arguments) => list(arguments),
+        ScheduleCommand::NativeRun(arguments) => native_run(arguments),
         ScheduleCommand::Status(arguments) => status(arguments),
         ScheduleCommand::Doctor(arguments) => doctor(arguments),
         ScheduleCommand::Generate(arguments) => generate(arguments),
@@ -64,7 +65,7 @@ fn add(arguments: ScheduleAddArgs) -> Result<i32> {
         at: arguments.at,
         every: arguments.every,
         cron: arguments.cron,
-        timezone: arguments.timezone,
+        timezone: "local".to_owned(),
         overlap: convert_overlap(arguments.overlap),
         scope,
     });
@@ -83,7 +84,6 @@ fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
         || has_scope
         || arguments.action.is_some()
         || arguments.overlap.is_some()
-        || arguments.timezone.is_some()
         || arguments.enable
         || arguments.disable;
     if !has_changes {
@@ -115,9 +115,6 @@ fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
     }
     if let Some(overlap) = arguments.overlap {
         schedule.overlap = convert_overlap(overlap);
-    }
-    if let Some(timezone) = arguments.timezone {
-        schedule.timezone = timezone;
     }
     if arguments.enable {
         schedule.enabled = true;
@@ -292,6 +289,49 @@ fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
             crate::commands::run_pull(&root, &mut manifest, &repositories, jobs, verbose)
         }
     }
+}
+
+fn native_run(arguments: ScheduleNativeRunArgs) -> Result<i32> {
+    let root = workspace::find_root()?;
+    let mut command =
+        Command::new(env::current_exe().context("failed to locate batch-git executable")?);
+    command
+        .args(["schedule", "run", &arguments.name])
+        .current_dir(&root)
+        .env("BATCH_GIT_WORKSPACE", &root)
+        .env("NO_COLOR", "1")
+        .stdin(Stdio::null());
+    if let Some(timezone) = &arguments.timezone {
+        command.env("BATCH_GIT_TZ", timezone).env("TZ", timezone);
+    } else {
+        command.env_remove("BATCH_GIT_TZ").env_remove("TZ");
+    }
+    if arguments.log {
+        let log_directory = schedule_log_directory(&root, &arguments.name)?;
+        fs::create_dir_all(&log_directory).with_context(|| {
+            format!(
+                "failed to create schedule log directory {}",
+                log_directory.display()
+            )
+        })?;
+        let stdout = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_directory.join("stdout.log"))?;
+        let stderr = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_directory.join("stderr.log"))?;
+        command
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr));
+    } else {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
+    let status = command
+        .status()
+        .context("failed to launch scheduled batch-git run")?;
+    Ok(status.code().unwrap_or(1))
 }
 
 #[derive(Serialize)]
@@ -608,12 +648,11 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
         println!("schedule {} unchanged", arguments.name);
         return Ok(0);
     }
-    if existing_state.is_none()
-        && artifact.files.iter().any(|file| file.path.exists())
-        && !arguments.force
-    {
+    let native_collision = artifact.files.iter().any(|file| file.path.exists())
+        || native_task_exists(artifact.platform, &artifact.task_id)?;
+    if existing_state.is_none() && native_collision && !arguments.force {
         bail!(
-            "native task files already exist for {}; use --force to replace them",
+            "native task already exists for {}; use --force to replace it",
             arguments.name
         );
     }
@@ -787,6 +826,7 @@ fn action_label(action: ScheduleAction) -> &'static str {
 enum NativePlatform {
     Launchd,
     Systemd,
+    Windows,
 }
 
 impl NativePlatform {
@@ -794,6 +834,7 @@ impl NativePlatform {
         match platform {
             SchedulePlatform::Launchd => Ok(Self::Launchd),
             SchedulePlatform::Systemd => Ok(Self::Systemd),
+            SchedulePlatform::Windows => Ok(Self::Windows),
             SchedulePlatform::Auto => {
                 #[cfg(target_os = "macos")]
                 {
@@ -803,7 +844,11 @@ impl NativePlatform {
                 {
                     Ok(Self::Systemd)
                 }
-                #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+                #[cfg(target_os = "windows")]
+                {
+                    Ok(Self::Windows)
+                }
+                #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
                 {
                     bail!("automatic schedule platform detection is unsupported on this OS")
                 }
@@ -815,6 +860,7 @@ impl NativePlatform {
         match self {
             Self::Launchd => "launchd",
             Self::Systemd => "systemd",
+            Self::Windows => "windows",
         }
     }
 
@@ -822,6 +868,7 @@ impl NativePlatform {
         match label {
             "launchd" => Ok(Self::Launchd),
             "systemd" => Ok(Self::Systemd),
+            "windows" => Ok(Self::Windows),
             _ => bail!("unsupported registered schedule platform: {label}"),
         }
     }
@@ -847,7 +894,13 @@ fn build_artifact(
     schedule: &ScheduleRecord,
     platform: NativePlatform,
 ) -> Result<NativeArtifact> {
-    build_artifact_with_logging(root, schedule, platform, settings::schedule_log_enabled()?)
+    build_artifact_with_options(
+        root,
+        schedule,
+        platform,
+        settings::schedule_log_enabled()?,
+        settings::schedule_timezone()?.as_deref(),
+    )
 }
 
 fn build_artifact_with_logging(
@@ -855,6 +908,22 @@ fn build_artifact_with_logging(
     schedule: &ScheduleRecord,
     platform: NativePlatform,
     log_enabled: bool,
+) -> Result<NativeArtifact> {
+    build_artifact_with_options(
+        root,
+        schedule,
+        platform,
+        log_enabled,
+        settings::schedule_timezone()?.as_deref(),
+    )
+}
+
+fn build_artifact_with_options(
+    root: &Path,
+    schedule: &ScheduleRecord,
+    platform: NativePlatform,
+    log_enabled: bool,
+    timezone: Option<&str>,
 ) -> Result<NativeArtifact> {
     let executable = env::current_exe()
         .context("failed to locate batch-git executable")?
@@ -888,8 +957,14 @@ fn build_artifact_with_logging(
                     schedule.cron.as_deref().expect("validated cron"),
                 )?)?
             };
+            let timezone_environment = timezone.map_or_else(String::new, |timezone| {
+                format!(
+                    "<key>BATCH_GIT_TZ</key><string>{}</string>",
+                    xml_escape(timezone)
+                )
+            });
             let content = format!(
-                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>ProgramArguments</key><array><string>{}</string><string>schedule</string><string>run</string><string>{}</string></array><key>EnvironmentVariables</key><dict><key>BATCH_GIT_WORKSPACE</key><string>{}</string><key>NO_COLOR</key><string>1</string></dict>{}<key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string></dict></plist>\n",
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>ProgramArguments</key><array><string>{}</string><string>schedule</string><string>run</string><string>{}</string></array><key>EnvironmentVariables</key><dict><key>BATCH_GIT_WORKSPACE</key><string>{}</string><key>NO_COLOR</key><string>1</string>{timezone_environment}</dict>{}<key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string></dict></plist>\n",
                 xml_escape(&task_id),
                 xml_escape(&executable.display().to_string()),
                 xml_escape(&schedule.name),
@@ -927,8 +1002,17 @@ fn build_artifact_with_logging(
             let directory = systemd_user_directory()?;
             let service_path = directory.join(format!("{task_id}.service"));
             let timer_path = directory.join(format!("{task_id}.timer"));
+            let timezone_environment = timezone.map_or_else(
+                || "UnsetEnvironment=TZ BATCH_GIT_TZ".to_owned(),
+                |timezone| {
+                    format!(
+                        "Environment={}",
+                        systemd_quote(&format!("BATCH_GIT_TZ={timezone}"))
+                    )
+                },
+            );
             let service = format!(
-                "[Unit]\nDescription=batch-git schedule {}\n\n[Service]\nType=oneshot\nEnvironment=NO_COLOR=1\nEnvironment={}\nExecStart={} schedule run {}\nStandardOutput={}\nStandardError={}\n",
+                "[Unit]\nDescription=batch-git schedule {}\n\n[Service]\nType=oneshot\nEnvironment=NO_COLOR=1\nEnvironment={}\n{timezone_environment}\nExecStart={} schedule run {}\nStandardOutput={}\nStandardError={}\n",
                 schedule.name,
                 systemd_quote(&format!("BATCH_GIT_WORKSPACE={}", root.display())),
                 systemd_quote(&executable.display().to_string()),
@@ -942,8 +1026,10 @@ fn build_artifact_with_logging(
                     .map(|path| systemd_quote(&format!("append:{}", path.display())))
                     .unwrap_or_else(|| "null".to_owned())
             );
+            let timezone_suffix =
+                timezone.map_or_else(String::new, |timezone| format!(" {timezone}"));
             let timer_trigger = if let Some(at) = &schedule.at {
-                format!("OnCalendar=*-*-* {at}:00")
+                format!("OnCalendar=*-*-* {at}:00{timezone_suffix}")
             } else if let Some(every) = &schedule.every {
                 format!(
                     "OnUnitActiveSec={}s\nOnBootSec={}s",
@@ -951,9 +1037,12 @@ fn build_artifact_with_logging(
                     schedule_interval_seconds(every)?
                 )
             } else {
-                systemd_cron_trigger(&CronExpression::parse(
-                    schedule.cron.as_deref().expect("validated cron"),
-                )?)
+                format!(
+                    "{}{timezone_suffix}",
+                    systemd_cron_trigger(&CronExpression::parse(
+                        schedule.cron.as_deref().expect("validated cron"),
+                    )?)
+                )
             };
             let timer = format!(
                 "[Unit]\nDescription=batch-git schedule {}\n\n[Timer]\n{}\nPersistent=true\nUnit={}.service\n\n[Install]\nWantedBy=timers.target\n",
@@ -978,7 +1067,127 @@ fn build_artifact_with_logging(
                 ],
             })
         }
+        NativePlatform::Windows => {
+            if schedule.cron.is_some() {
+                bail!(
+                    "Windows Task Scheduler does not support cron schedules; use --at or --every"
+                );
+            }
+            let destination = windows_task_directory()?.join(format!("{task_id}.xml"));
+            let trigger = if let Some(at) = &schedule.at {
+                format!(
+                    "<CalendarTrigger><StartBoundary>2000-01-01T{at}:00</StartBoundary><Enabled>true</Enabled><ScheduleByDay><DaysInterval>1</DaysInterval></ScheduleByDay></CalendarTrigger>"
+                )
+            } else {
+                let seconds = schedule_interval_seconds(
+                    schedule
+                        .every
+                        .as_deref()
+                        .expect("validated schedule interval"),
+                )?;
+                let interval = windows_repetition_interval(seconds)?;
+                format!(
+                    "<TimeTrigger><Repetition><Interval>{interval}</Interval><StopAtDurationEnd>false</StopAtDurationEnd></Repetition><StartBoundary>2000-01-01T00:00:00</StartBoundary><Enabled>true</Enabled></TimeTrigger>"
+                )
+            };
+            let arguments = if log_enabled || timezone.is_some() {
+                let mut arguments = format!("schedule native-run {}", schedule.name);
+                if log_enabled {
+                    arguments.push_str(" --log");
+                }
+                if let Some(timezone) = timezone {
+                    arguments.push_str(" --timezone ");
+                    arguments.push_str(&windows_argument(timezone));
+                }
+                arguments
+            } else {
+                format!("schedule run {}", schedule.name)
+            };
+            let multiple_instances = match schedule.overlap {
+                ScheduleOverlap::Skip => "IgnoreNew",
+                ScheduleOverlap::Queue => "Queue",
+            };
+            let content = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><RegistrationInfo><Description>batch-git schedule {}</Description></RegistrationInfo><Triggers>{trigger}</Triggers><Principals><Principal id=\"Author\"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals><Settings><MultipleInstancesPolicy>{multiple_instances}</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries><AllowHardTerminate>true</AllowHardTerminate><StartWhenAvailable>true</StartWhenAvailable><RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable><Enabled>true</Enabled><Hidden>false</Hidden><ExecutionTimeLimit>PT0S</ExecutionTimeLimit><Priority>7</Priority></Settings><Actions Context=\"Author\"><Exec><Command>{}</Command><Arguments>{}</Arguments><WorkingDirectory>{}</WorkingDirectory></Exec></Actions></Task>\n",
+                xml_escape(&schedule.name),
+                xml_escape(&executable.display().to_string()),
+                xml_escape(&arguments),
+                xml_escape(&root.display().to_string()),
+            );
+            Ok(NativeArtifact {
+                platform,
+                task_id,
+                log_enabled,
+                log_directory,
+                stdout_path: stdout,
+                stderr_path: stderr,
+                files: vec![NativeFile {
+                    path: destination,
+                    content,
+                }],
+            })
+        }
     }
+}
+
+fn windows_argument(value: &str) -> String {
+    if !value.is_empty()
+        && !value
+            .chars()
+            .any(|character| character.is_whitespace() || character == '"')
+    {
+        return value.to_owned();
+    }
+    let mut quoted = String::from("\"");
+    let mut backslashes = 0;
+    for character in value.chars() {
+        if character == '\\' {
+            backslashes += 1;
+        } else if character == '"' {
+            quoted.push_str(&"\\".repeat(backslashes * 2 + 1));
+            quoted.push('"');
+            backslashes = 0;
+        } else {
+            quoted.push_str(&"\\".repeat(backslashes));
+            backslashes = 0;
+            quoted.push(character);
+        }
+    }
+    quoted.push_str(&"\\".repeat(backslashes * 2));
+    quoted.push('"');
+    quoted
+}
+
+fn windows_repetition_interval(seconds: u64) -> Result<String> {
+    const MINIMUM: u64 = 60;
+    const MAXIMUM: u64 = 31 * 24 * 60 * 60;
+    if seconds < MINIMUM {
+        bail!("Windows Task Scheduler requires --every to be at least 1m");
+    }
+    if seconds > MAXIMUM {
+        bail!("Windows Task Scheduler requires --every to be at most 31d");
+    }
+    let days = seconds / 86_400;
+    let hours = seconds % 86_400 / 3_600;
+    let minutes = seconds % 3_600 / 60;
+    let seconds = seconds % 60;
+    let mut value = String::from("P");
+    if days > 0 {
+        value.push_str(&format!("{days}D"));
+    }
+    if hours > 0 || minutes > 0 || seconds > 0 || days == 0 {
+        value.push('T');
+        if hours > 0 {
+            value.push_str(&format!("{hours}H"));
+        }
+        if minutes > 0 {
+            value.push_str(&format!("{minutes}M"));
+        }
+        if seconds > 0 {
+            value.push_str(&format!("{seconds}S"));
+        }
+    }
+    Ok(value)
 }
 
 fn launchd_cron_trigger(cron: &CronExpression) -> Result<String> {
@@ -1167,6 +1376,17 @@ fn activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
                 run_systemctl(["enable", "--now", timer.as_str()])?;
             }
         }
+        NativePlatform::Windows => {
+            let status = Command::new("schtasks.exe")
+                .args(["/Create", "/TN", &artifact.task_id, "/XML"])
+                .arg(&artifact.files[0].path)
+                .arg("/F")
+                .status()
+                .context("failed to execute schtasks.exe")?;
+            if !status.success() {
+                bail!("schtasks.exe /Create failed with {status}");
+            }
+        }
     }
     Ok(())
 }
@@ -1184,6 +1404,11 @@ fn deactivate(state: &RegistrationState) -> Result<()> {
             let timer = format!("{}.timer", state.task_id);
             let _ = Command::new("systemctl")
                 .args(["--user", "disable", "--now", timer.as_str()])
+                .status();
+        }
+        "windows" => {
+            let _ = Command::new("schtasks.exe")
+                .args(["/Delete", "/TN", &state.task_id, "/F"])
                 .status();
         }
         platform => bail!("unsupported registered schedule platform: {platform}"),
@@ -1211,6 +1436,19 @@ fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
             let timer = format!("{}.timer", artifact.task_id);
             let _ = run_systemctl(["restart", timer.as_str()]);
         }
+        NativePlatform::Windows => {
+            if artifact.files[0].path.is_file() {
+                let status = Command::new("schtasks.exe")
+                    .args(["/Create", "/TN", &artifact.task_id, "/XML"])
+                    .arg(&artifact.files[0].path)
+                    .arg("/F")
+                    .status()
+                    .context("failed to restore previous Windows scheduled task")?;
+                if !status.success() {
+                    bail!("failed to restore previous Windows scheduled task: {status}");
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -1225,6 +1463,27 @@ fn run_systemctl<const N: usize>(arguments: [&str; N]) -> Result<()> {
         bail!("systemctl failed with {status}");
     }
     Ok(())
+}
+
+fn native_task_exists(platform: NativePlatform, task_id: &str) -> Result<bool> {
+    if platform != NativePlatform::Windows {
+        return Ok(false);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let status = Command::new("schtasks.exe")
+            .args(["/Query", "/TN", task_id])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .context("failed to execute schtasks.exe")?;
+        Ok(status.success())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = task_id;
+        Ok(false)
+    }
 }
 
 fn launchd_domain() -> Result<String> {
@@ -1355,6 +1614,18 @@ fn native_status(state: &RegistrationState) -> Result<NativeStatus> {
                 },
             })
         }
+        "windows" => {
+            let output = Command::new("schtasks.exe")
+                .args(["/Query", "/TN", &state.task_id])
+                .output()
+                .context("failed to execute schtasks.exe")?;
+            Ok(NativeStatus {
+                loaded: output.status.success(),
+                state: None,
+                runs: None,
+                last_exit_code: None,
+            })
+        }
         platform => bail!("unsupported registered schedule platform: {platform}"),
     }
 }
@@ -1426,7 +1697,14 @@ fn state_root() -> Result<PathBuf> {
     {
         Ok(home_directory()?.join("Library/Application Support/batch-git"))
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(value) = env::var_os("LOCALAPPDATA").or_else(|| env::var_os("APPDATA")) {
+            return Ok(PathBuf::from(value).join("batch-git"));
+        }
+        Ok(home_directory()?.join("AppData/Local/batch-git"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         if let Some(value) = env::var_os("XDG_STATE_HOME") {
             return Ok(PathBuf::from(value).join("batch-git"));
@@ -1443,10 +1721,15 @@ fn systemd_user_directory() -> Result<PathBuf> {
     }
 }
 
+fn windows_task_directory() -> Result<PathBuf> {
+    Ok(state_root()?.join("tasks/windows"))
+}
+
 fn home_directory() -> Result<PathBuf> {
     env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
         .map(PathBuf::from)
-        .ok_or_else(|| anyhow::anyhow!("HOME is not set"))
+        .ok_or_else(|| anyhow::anyhow!("HOME and USERPROFILE are not set"))
 }
 
 fn remove_registered_files(state: &RegistrationState) -> Result<()> {
@@ -1493,6 +1776,9 @@ fn native_paths(task_id: &str, platform: NativePlatform) -> Result<Vec<PathBuf>>
                 directory.join(format!("{task_id}.timer")),
             ])
         }
+        NativePlatform::Windows => Ok(vec![
+            windows_task_directory()?.join(format!("{task_id}.xml")),
+        ]),
     }
 }
 
@@ -1549,8 +1835,9 @@ fn systemd_quote(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        NativePlatform, artifact_digest, build_artifact, fnv1a, launchd_cron_trigger,
-        systemd_cron_trigger, systemd_quote, xml_escape,
+        NativePlatform, artifact_digest, build_artifact, build_artifact_with_logging,
+        build_artifact_with_options, fnv1a, launchd_cron_trigger, systemd_cron_trigger,
+        systemd_quote, windows_argument, windows_repetition_interval, xml_escape,
     };
     use crate::cron::CronExpression;
     use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScope};
@@ -1606,5 +1893,99 @@ mod tests {
             systemd_cron_trigger(&with_seconds),
             "OnCalendar=*-*-* *:*:0,10,20,30,40,50"
         );
+    }
+
+    #[test]
+    fn windows_generates_daily_and_interval_tasks_but_rejects_cron() {
+        let root = tempfile::tempdir().unwrap();
+        let schedule =
+            |at: Option<&str>, every: Option<&str>, cron: Option<&str>, overlap| ScheduleRecord {
+                name: "windows-sync".to_owned(),
+                enabled: true,
+                action: ScheduleAction::Sync,
+                at: at.map(str::to_owned),
+                every: every.map(str::to_owned),
+                cron: cron.map(str::to_owned),
+                timezone: "local".to_owned(),
+                overlap,
+                scope: ScheduleScope {
+                    all: true,
+                    repositories: Vec::new(),
+                },
+            };
+
+        let daily = build_artifact(
+            root.path(),
+            &schedule(Some("02:30"), None, None, ScheduleOverlap::Skip),
+            NativePlatform::Windows,
+        )
+        .unwrap();
+        assert_eq!(daily.files.len(), 1);
+        assert_eq!(daily.files[0].path.extension().unwrap(), "xml");
+        assert!(
+            daily.files[0]
+                .content
+                .contains("<StartBoundary>2000-01-01T02:30:00</StartBoundary>")
+        );
+        assert!(
+            daily.files[0]
+                .content
+                .contains("<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>")
+        );
+        assert!(
+            daily.files[0]
+                .content
+                .contains("<Arguments>schedule run windows-sync</Arguments>")
+        );
+
+        let interval = build_artifact_with_logging(
+            root.path(),
+            &schedule(None, Some("15m"), None, ScheduleOverlap::Queue),
+            NativePlatform::Windows,
+            true,
+        )
+        .unwrap();
+        assert!(
+            interval.files[0]
+                .content
+                .contains("<Interval>PT15M</Interval>")
+        );
+        assert!(
+            interval.files[0]
+                .content
+                .contains("<MultipleInstancesPolicy>Queue</MultipleInstancesPolicy>")
+        );
+        assert!(
+            interval.files[0]
+                .content
+                .contains("<Arguments>schedule native-run windows-sync --log</Arguments>")
+        );
+
+        let timezone = build_artifact_with_options(
+            root.path(),
+            &schedule(Some("02:30"), None, None, ScheduleOverlap::Skip),
+            NativePlatform::Windows,
+            false,
+            Some("Asia/Shanghai"),
+        )
+        .unwrap();
+        assert!(timezone.files[0].content.contains(
+            "<Arguments>schedule native-run windows-sync --timezone Asia/Shanghai</Arguments>"
+        ));
+
+        let cron = build_artifact(
+            root.path(),
+            &schedule(None, None, Some("0 0 2 * * *"), ScheduleOverlap::Skip),
+            NativePlatform::Windows,
+        )
+        .err()
+        .expect("Windows cron should be rejected");
+        assert!(cron.to_string().contains("does not support cron schedules"));
+        assert!(windows_repetition_interval(30).is_err());
+        assert_eq!(windows_repetition_interval(90).unwrap(), "PT1M30S");
+        assert_eq!(windows_repetition_interval(86_400).unwrap(), "P1D");
+        assert!(windows_repetition_interval(32 * 86_400).is_err());
+        assert_eq!(windows_argument("Asia/Shanghai"), "Asia/Shanghai");
+        assert_eq!(windows_argument("value with space"), "\"value with space\"");
     }
 }

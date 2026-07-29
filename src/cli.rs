@@ -125,6 +125,8 @@ pub enum Command {
     Merge(MergeArgs),
     /// Fast-forward the current tracking branch in selected repositories.
     Pull(SyncArgs),
+    /// Push the current tracking branch in selected repositories.
+    Push(PushArgs),
     /// Restore missing repositories declared in workspace.toml.
     Restore,
     /// Scan for repositories and create or extend workspace.toml.
@@ -181,6 +183,24 @@ pub struct SyncArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct PushArgs {
+    #[command(flatten)]
+    pub selection: SyncArgs,
+
+    /// Create the remote branch and configure upstream when it is missing.
+    #[arg(short = 'u', long)]
+    pub set_upstream: bool,
+
+    /// Remote used with --set-upstream; defaults to the repository's primary remote.
+    #[arg(long, requires = "set_upstream")]
+    pub remote: Option<String>,
+
+    /// Preview the push without updating the remote.
+    #[arg(long)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Args)]
 pub struct ScheduleArgs {
     #[command(subcommand)]
     pub command: ScheduleCommand,
@@ -197,6 +217,8 @@ pub enum ScheduleCommand {
     Generate(SchedulePlatformArgs),
     /// List declared schedules.
     List(ScheduleListArgs),
+    #[command(hide = true)]
+    NativeRun(ScheduleNativeRunArgs),
     /// Preview the repositories and action selected by a schedule.
     Plan(ScheduleNameArgs),
     /// Create or update a native scheduler task.
@@ -241,7 +263,7 @@ pub struct ScheduleAddArgs {
     #[arg(long, value_enum, default_value = "sync")]
     pub action: ScheduleActionValue,
 
-    /// Run every day at HH:MM local time.
+    /// Run every day at HH:MM in BATCH_GIT_TZ or the system timezone.
     #[arg(long)]
     pub at: Option<String>,
 
@@ -265,10 +287,6 @@ pub struct ScheduleAddArgs {
     #[arg(long, value_enum, default_value = "skip")]
     pub overlap: ScheduleOverlapValue,
 
-    /// Schedule timezone; currently only local is supported.
-    #[arg(long, default_value = "local")]
-    pub timezone: String,
-
     /// Add the declaration in a disabled state.
     #[arg(long)]
     pub disabled: bool,
@@ -286,7 +304,7 @@ pub struct ScheduleUpdateArgs {
     #[arg(long, value_enum)]
     pub action: Option<ScheduleActionValue>,
 
-    /// Replace the trigger with a daily HH:MM local time.
+    /// Replace the daily trigger time.
     #[arg(long)]
     pub at: Option<String>,
 
@@ -309,10 +327,6 @@ pub struct ScheduleUpdateArgs {
     /// Change overlap behavior.
     #[arg(long, value_enum)]
     pub overlap: Option<ScheduleOverlapValue>,
-
-    /// Change the timezone; currently only local is supported.
-    #[arg(long)]
-    pub timezone: Option<String>,
 
     /// Enable the schedule declaration.
     #[arg(long, conflicts_with = "disable")]
@@ -351,6 +365,17 @@ pub struct ScheduleRunArgs {
 }
 
 #[derive(Debug, Args)]
+pub struct ScheduleNativeRunArgs {
+    pub name: String,
+
+    #[arg(long)]
+    pub log: bool,
+
+    #[arg(long)]
+    pub timezone: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub struct ScheduleListArgs {
     /// Include local scheduler registration state.
     #[arg(long, visible_alias = "installed")]
@@ -366,6 +391,7 @@ pub enum SchedulePlatform {
     Auto,
     Launchd,
     Systemd,
+    Windows,
 }
 
 #[derive(Debug, Args)]
@@ -476,8 +502,13 @@ pub struct MergeArgs {
     #[arg(long)]
     pub remote: Option<String>,
 
+    /// Merge the branch named by CURRENT_FEATURE_BRANCH.
+    #[arg(long, conflicts_with = "branch")]
+    pub feature: bool,
+
     /// Branch to merge into the current branch.
-    pub branch: String,
+    #[arg(required_unless_present = "feature")]
+    pub branch: Option<String>,
 }
 
 #[derive(Debug, Args)]

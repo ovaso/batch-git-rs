@@ -28,7 +28,9 @@ workspace/
 
 - 可用的 Rust 工具链；
 - 系统 Git；
-- 使用定时任务时，macOS 需要 `launchd`，Linux 需要 `systemd --user`。
+- 使用定时任务时，macOS 需要 `launchd`，Linux 需要 `systemd --user`，Windows
+  使用 Task Scheduler。Windows 首版不支持 cron 声明。
+- schedule 时区通过 `BATCH_GIT_TZ` 设置；未设置时使用系统时区。
 
 ```sh
 cargo build --release
@@ -143,6 +145,26 @@ batch-git pull --match 'service-*'
 工作树干净、分支配置了 upstream，且远端更新可以 fast-forward。程序不会自动
 stash、rebase、reset 或处理分叉。
 
+### 5.4 push
+
+```sh
+batch-git push
+batch-git push service-api service-web
+batch-git push --match 'service-*'
+batch-git push --dry-run
+batch-git push --set-upstream
+batch-git push -u --remote origin
+```
+
+`push` 只推送选中仓库的当前分支，不推送其他分支或 tag，也不提供 force push。
+未给选择条件时默认整个工作区。已有 upstream 的分支会推送到其配置的远端分支；
+up-to-date 或仅落后 upstream 的分支正常跳过，发生分叉时失败。
+
+没有 upstream 的分支默认跳过，不创建远端分支。只有显式使用
+`-u` / `--set-upstream` 时，才会推送到仓库的 primary remote 并建立 tracking；
+此时可用 `--remote` 选择其他远端。`--dry-run` 只预览，不修改远端或 upstream。
+工作树中的未提交内容不会被推送，但也不会阻止已提交内容执行 push。
+
 ## 6. 分支操作
 
 ### 6.1 搜索分支
@@ -200,6 +222,7 @@ commit。新分支已存在、起点不存在或歧义、工作树阻止安全�
 
 ```sh
 batch-git merge feature/login
+batch-git merge --feature
 batch-git merge --update-current feature/login
 batch-git merge --no-update-current feature/login
 ```
@@ -207,6 +230,7 @@ batch-git merge --no-update-current feature/login
 `merge` 将源分支合并到各仓库的当前分支。默认不联网；`--update-current` 会先对
 当前 tracking 分支执行 fast-forward-only pull。发生冲突时程序不会自动
 `git merge --abort`，应进入对应仓库检查并人工处理。
+`merge --feature` 使用 `CURRENT_FEATURE_BRANCH` 作为源分支，无需再传分支名。
 
 ## 7. 执行原生 Git
 
@@ -294,6 +318,16 @@ batch-git checkout feature/login --remote origin
 
 `pull` 的安全条件更严格。用 `batch-git status` 检查 dirty、detached、upstream 和
 分叉状态，再进入失败仓库处理。
+
+### push 跳过没有 upstream 的分支
+
+默认不会自动创建远端分支。确认需要首次推送后执行：
+
+```sh
+batch-git push --set-upstream
+# 或指定远端
+batch-git push -u --remote origin
+```
 
 ### 命令看起来一直在等待
 

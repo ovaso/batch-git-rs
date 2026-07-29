@@ -56,7 +56,10 @@ pub struct ScheduleRecord {
     pub every: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cron: Option<String>,
-    #[serde(default = "default_timezone")]
+    #[serde(
+        default = "default_timezone",
+        skip_serializing_if = "is_default_timezone"
+    )]
     pub timezone: String,
     #[serde(default)]
     pub overlap: ScheduleOverlap,
@@ -93,6 +96,10 @@ fn default_true() -> bool {
 
 fn default_timezone() -> String {
     "local".to_owned()
+}
+
+fn is_default_timezone(value: &str) -> bool {
+    value == "local"
 }
 
 fn default_primary_remote() -> String {

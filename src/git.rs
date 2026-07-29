@@ -191,6 +191,9 @@ where
 {
     let mut command = Command::new("git");
     command.current_dir(directory).args(args);
+    if let Some(timezone) = crate::settings::schedule_timezone()? {
+        command.env("TZ", timezone);
+    }
     if managed {
         command.env_remove("GIT_CONFIG_COUNT");
         for variable in ROUTING_ENVIRONMENT {
@@ -832,6 +835,31 @@ fn upstream_summary(repository: &Repository) -> Result<UpstreamSummary> {
         (0, behind) => UpstreamSummary::Behind(behind),
         (ahead, behind) => UpstreamSummary::Diverged { ahead, behind },
     })
+}
+
+pub fn upstream_push_target(path: &Path, branch: &str) -> Result<Option<(String, String)>> {
+    let repository = Repository::open(path)
+        .with_context(|| format!("failed to open Git repository {}", path.display()))?;
+    let config = repository
+        .config()
+        .context("failed to read Git configuration")?;
+    let remote_key = format!("branch.{branch}.remote");
+    let merge_key = format!("branch.{branch}.merge");
+    let remote = match config.get_string(&remote_key) {
+        Ok(remote) => remote,
+        Err(error) if error.code() == git2::ErrorCode::NotFound => return Ok(None),
+        Err(error) => return Err(error.into()),
+    };
+    if remote == "." {
+        bail!("current branch upstream is not a remote branch");
+    }
+    let merge_ref = config
+        .get_string(&merge_key)
+        .with_context(|| format!("current branch has no configured upstream ref: {branch}"))?;
+    if !merge_ref.starts_with("refs/heads/") {
+        bail!("current branch upstream is not a remote branch: {merge_ref}");
+    }
+    Ok(Some((remote, merge_ref)))
 }
 
 pub fn checkout_target(path: &Path, branch: &str, remote: Option<&str>) -> Result<CheckoutTarget> {

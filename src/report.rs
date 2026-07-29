@@ -188,11 +188,25 @@ pub(crate) fn print_operation_summary(results: &[RepositoryResult], verbose: boo
 }
 
 pub(crate) fn print_selected_results(results: &[RepositoryResult], verbose: bool) -> i32 {
+    print_selected_results_with_comments(results, verbose, false)
+}
+
+pub(crate) fn print_push_summary(results: &[RepositoryResult], verbose: bool) -> i32 {
+    print_selected_results_with_comments(results, verbose, true)
+}
+
+fn print_selected_results_with_comments(
+    results: &[RepositoryResult],
+    verbose: bool,
+    show_skipped_detail: bool,
+) -> i32 {
     let style = OutputBlockStyle::detect();
     let rows = results
         .iter()
         .map(|outcome| {
-            let comment = if outcome.kind == ResultKind::Failed {
+            let comment = if outcome.kind == ResultKind::Failed
+                || (show_skipped_detail && outcome.kind == ResultKind::Skipped)
+            {
                 outcome.detail.clone()
             } else {
                 "-".to_owned()
@@ -281,6 +295,7 @@ pub(crate) fn print_checkout_summary(
     results: &[RepositoryResult],
     branches: &[String],
     default_branches: &[String],
+    feature_branch: Option<&str>,
 ) -> i32 {
     debug_assert_eq!(results.len(), branches.len());
     debug_assert_eq!(results.len(), default_branches.len());
@@ -292,11 +307,7 @@ pub(crate) fn print_checkout_summary(
             vec![
                 outcome.name.clone(),
                 outcome.kind.colored_label(),
-                if branch == default_branch {
-                    color::blue(branch)
-                } else {
-                    branch.clone()
-                },
+                color::branch(branch, default_branch, feature_branch),
                 if outcome.kind == ResultKind::Failed {
                     outcome.detail.clone()
                 } else {

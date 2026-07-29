@@ -52,7 +52,7 @@ cargo build --release
 - [ ] 格式、测试、Clippy 和 release build 全部通过；
 - [ ] `batch-git --help` 与用户手册一致；
 - [ ] `workspace.toml` 示例可被当前 schema 读取；
-- [ ] macOS/Linux schedule 限制写明；
+- [ ] macOS/Linux/Windows schedule 限制写明；
 - [ ] 没有在文档中把 `bit` 描述为自动安装的命令；
 - [ ] 已知限制已记录；
 - [ ] 发布产物执行 `batch-git --version` 正确。

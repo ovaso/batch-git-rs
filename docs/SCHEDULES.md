@@ -1,8 +1,8 @@
 # 定时同步手册
 
-batch-git 可以把清单中的 schedule 注册为 macOS `launchd` 或 Linux
-`systemd --user` 任务。建议优先使用 `action = "sync"`：它只恢复缺失仓库并更新
-远端引用，不修改已有仓库的工作树。
+batch-git 可以把清单中的 schedule 注册为 macOS `launchd`、Linux
+`systemd --user` 或 Windows Task Scheduler 任务。建议优先使用
+`action = "sync"`：它只恢复缺失仓库并更新远端引用，不修改已有仓库的工作树。
 
 ## 1. 标准流程
 
@@ -56,8 +56,17 @@ batch-git schedule add business-hours \
 
 - `--action sync|pull`：默认 `sync`；
 - `--overlap skip|queue`：已有工作区操作时跳过或等待，默认 `skip`；
-- `--timezone local`：当前只支持本机时区；
 - `--disabled`：创建禁用声明；禁用状态下不能 plan、run 或 register。
+
+schedule 时区通过项目专属环境变量 `BATCH_GIT_TZ` 设置，例如：
+
+```sh
+BATCH_GIT_TZ=Asia/Shanghai batch-git schedule register nightly-sync
+```
+
+未设置或设置为空时，不注入时区覆盖，使用操作系统时区。修改该变量后需要重新
+执行 `schedule register`，使原生定义和注册摘要同步更新。值应使用操作系统支持的
+无空白时区标识，例如 IANA 时区 `Asia/Shanghai`。
 
 ## 3. 修改和查看
 
@@ -80,7 +89,9 @@ batch-git schedule plan nightly-sync --json
 
 ### 每日时间
 
-`--at HH:MM` 使用本机时区，范围为 `00:00` 到 `23:59`。
+`--at HH:MM` 使用有效 schedule 时区，范围为 `00:00` 到 `23:59`。systemd 会将
+`BATCH_GIT_TZ` 写入 `OnCalendar`；launchd 和 Windows Task Scheduler 的触发器
+仍使用系统时区，但任务进程会收到对应的 `TZ` 环境。
 
 ### 固定间隔
 
@@ -105,7 +116,11 @@ batch-git schedule plan nightly-sync --json
 
 为保持跨平台语义一致，不允许同时限制“日”和“周”。不支持 Quartz 扩展 `L`、
 `W`、`#` 和年份字段。launchd 日历不支持秒，因此选择 launchd 时 cron 秒字段
-必须严格为 `0`。
+必须严格为 `0`。Windows Task Scheduler 首版不支持 cron；选择 Windows 平台时
+使用 cron 的声明会直接报错，应改用 `--at` 或 `--every`。
+
+Windows Task Scheduler 的固定间隔最短为 `1m`、最长为 `31d`。超出该范围的
+`--every` 声明在 `doctor`、`generate` 或 `register` 时会报错。
 
 ## 5. 验证、生成和注册
 
@@ -113,6 +128,7 @@ batch-git schedule plan nightly-sync --json
 batch-git schedule doctor nightly-sync
 batch-git schedule doctor --platform launchd --json
 batch-git schedule generate nightly-sync --platform launchd
+batch-git schedule generate nightly-sync --platform windows
 batch-git schedule register nightly-sync --dry-run
 batch-git schedule register nightly-sync
 ```
@@ -120,9 +136,9 @@ batch-git schedule register nightly-sync
 `doctor` 检查声明、仓库选择和目标平台定义；不传名称时检查全部声明。
 `generate` 只把原生定义输出到终端，不注册。
 
-`--platform auto` 在 macOS 选择 launchd，在 Linux 选择 systemd。显式平台可用于
-预览。移动既有注册平台时使用 `--migrate`；替换一个未被 batch-git 登记、但
-任务 ID 冲突的原生任务时必须显式使用 `--force`。
+`--platform auto` 在 macOS 选择 launchd，在 Linux 选择 systemd，在 Windows
+选择 Task Scheduler。显式平台可用于预览。移动既有注册平台时使用 `--migrate`；
+替换一个未被 batch-git 登记、但任务 ID 冲突的原生任务时必须显式使用 `--force`。
 
 ## 6. 立即运行
 
@@ -210,6 +226,17 @@ systemctl --user status '<TASK-ID>.timer'
 systemctl --user status '<TASK-ID>.service'
 systemctl --user list-timers
 ```
+
+Windows：
+
+```powershell
+schtasks.exe /Query /TN '<TASK-ID>' /V /FO LIST
+schtasks.exe /Run /TN '<TASK-ID>'
+```
+
+Windows 原生定义 XML 保存在 batch-git state 目录的 `tasks/windows` 子目录。
+任务以当前交互用户身份运行；开启 schedule 日志时，由 batch-git 的内部启动器
+将输出追加到状态目录中的 `stdout.log` 和 `stderr.log`。
 
 常见判断顺序：声明是否 enabled、`doctor` 是否通过、是否重新 register、
 `NATIVE LOADED` 是否为 yes、`DEFINITION MATCHES` 是否为 yes，最后查看退出码和日志。

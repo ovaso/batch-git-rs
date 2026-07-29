@@ -37,3 +37,13 @@ pub(crate) fn magenta(value: impl std::fmt::Display) -> String {
 pub(crate) fn yellow(value: impl std::fmt::Display) -> String {
     paint(value, 33)
 }
+
+pub(crate) fn branch(value: &str, default_branch: &str, feature_branch: Option<&str>) -> String {
+    if Some(value) == feature_branch {
+        magenta(value)
+    } else if value == default_branch {
+        blue(value)
+    } else {
+        value.to_owned()
+    }
+}

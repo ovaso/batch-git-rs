@@ -13,7 +13,7 @@ use serde::Serialize;
 
 use crate::cli::{
     CheckoutArgs, Cli, CloneArgs, Command, ExecArgs, FindArgs, ForgetArgs, InfoArgs, ListArgs,
-    MergeArgs, RuntimeOptions, ScanArgs, SyncArgs,
+    MergeArgs, PushArgs, RuntimeOptions, ScanArgs, SyncArgs,
 };
 use crate::color;
 use crate::git::{
@@ -23,7 +23,8 @@ use crate::git::{
 use crate::model::{RepositoryRecord, WORKSPACE_FILE, Workspace, now, validate_directory};
 use crate::parallel::map_ordered;
 use crate::report::{
-    RepositoryResult, print_checkout_summary, print_results, print_selected_results,
+    RepositoryResult, print_checkout_summary, print_push_summary, print_results,
+    print_selected_results,
 };
 use crate::settings;
 use crate::table;
@@ -43,6 +44,7 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
         Command::Cf => checkout(checkout_alias_arguments(false, true), jobs, cli.verbose),
         Command::Merge(arguments) => merge(arguments, jobs, cli.verbose),
         Command::Pull(arguments) => pull(arguments, jobs, cli.verbose),
+        Command::Push(arguments) => push(arguments, jobs, cli.verbose),
         Command::Exec(arguments) => exec(arguments, jobs, cli.verbose),
         Command::Status => status(jobs),
         Command::Find(arguments) => find(arguments, jobs),
@@ -658,9 +660,143 @@ pub(crate) fn run_pull(
     Ok(crate::report::print_operation_summary(&results, verbose))
 }
 
+fn push(arguments: PushArgs, jobs: usize, verbose: bool) -> Result<i32> {
+    let root = workspace::find_root()?;
+    let _lock = WorkspaceLock::acquire(&root)?;
+    let manifest = workspace::read(&root)?;
+    let records = crate::selector::select(
+        &manifest,
+        &arguments.selection.selectors,
+        &arguments.selection.matches,
+        arguments.selection.all,
+    )?;
+    let results = map_ordered(&records, jobs, |repository| {
+        let path = root.join(&repository.directory);
+        if !git::is_repository(&path) {
+            return RepositoryResult::failed(
+                repository,
+                "repository is not materialized; run sync or restore",
+            );
+        }
+        let status = match git::status_summary(&path) {
+            Ok(status) => status,
+            Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+        };
+        if status.branch.starts_with("(detached:") || status.branch == "(unborn)" {
+            return RepositoryResult::failed(repository, "current HEAD is not a local branch");
+        }
+        let upstream_target = match git::upstream_push_target(&path, &status.branch) {
+            Ok(target) => target,
+            Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+        };
+
+        match status.upstream {
+            UpstreamSummary::None if upstream_target.is_some() => {
+                let (remote, merge_ref) = upstream_target.as_ref().expect("target checked above");
+                push_existing_upstream(
+                    repository,
+                    &path,
+                    &status.branch,
+                    remote,
+                    merge_ref,
+                    arguments.dry_run,
+                    jobs == 1,
+                )
+            }
+            UpstreamSummary::None if !arguments.set_upstream => {
+                RepositoryResult::skipped(repository, "current branch has no upstream")
+            }
+            UpstreamSummary::None => {
+                let remote = arguments
+                    .remote
+                    .as_deref()
+                    .unwrap_or(&repository.primary_remote);
+                let mut git_arguments = vec!["push"];
+                if arguments.dry_run {
+                    git_arguments.push("--dry-run");
+                }
+                git_arguments.extend(["--set-upstream", remote, "HEAD"]);
+                match git::run(&path, git_arguments, true, jobs == 1) {
+                    Ok(output) => RepositoryResult::from_git(
+                        repository,
+                        output,
+                        if arguments.dry_run {
+                            format!(
+                                "would push {} to {remote} and configure upstream",
+                                status.branch
+                            )
+                        } else {
+                            format!(
+                                "pushed {} to {remote} and configured upstream",
+                                status.branch
+                            )
+                        },
+                        false,
+                    ),
+                    Err(error) => RepositoryResult::failed(repository, error.to_string()),
+                }
+            }
+            UpstreamSummary::UpToDate => RepositoryResult::skipped(repository, "nothing to push"),
+            UpstreamSummary::Behind(count) => RepositoryResult::skipped(
+                repository,
+                format!("branch is behind upstream by {count} commit(s)"),
+            ),
+            UpstreamSummary::Diverged { ahead, behind } => RepositoryResult::failed(
+                repository,
+                format!("branch has diverged from upstream: ahead {ahead}, behind {behind}"),
+            ),
+            UpstreamSummary::Ahead(_) => {
+                let Some((remote, merge_ref)) = upstream_target.as_ref() else {
+                    return RepositoryResult::failed(
+                        repository,
+                        "current branch has no configured upstream target",
+                    );
+                };
+                push_existing_upstream(
+                    repository,
+                    &path,
+                    &status.branch,
+                    remote,
+                    merge_ref,
+                    arguments.dry_run,
+                    jobs == 1,
+                )
+            }
+        }
+    })?;
+    Ok(print_push_summary(&results, verbose))
+}
+
+fn push_existing_upstream(
+    repository: &RepositoryRecord,
+    path: &Path,
+    branch: &str,
+    remote: &str,
+    merge_ref: &str,
+    dry_run: bool,
+    allow_stdin: bool,
+) -> RepositoryResult {
+    let refspec = format!("HEAD:{merge_ref}");
+    let mut git_arguments = vec!["push"];
+    if dry_run {
+        git_arguments.push("--dry-run");
+    }
+    git_arguments.extend([remote, refspec.as_str()]);
+    match git::run(path, git_arguments, true, allow_stdin) {
+        Ok(output) => RepositoryResult::from_git(
+            repository,
+            output,
+            format!("pushed {branch}{}", if dry_run { " (dry run)" } else { "" }),
+            false,
+        ),
+        Err(error) => RepositoryResult::failed(repository, error.to_string()),
+    }
+}
+
 fn checkout(arguments: CheckoutArgs, jobs: usize, _verbose: bool) -> Result<i32> {
+    let current_feature_branch = settings::current_feature_branch()?;
     let feature_branch = if arguments.feature {
-        match settings::current_feature_branch()? {
+        match current_feature_branch.as_deref() {
             Some(branch) => Some(branch),
             None => {
                 println!("CURRENT_FEATURE_BRANCH is not set; nothing to checkout");
@@ -692,7 +828,7 @@ fn checkout(arguments: CheckoutArgs, jobs: usize, _verbose: bool) -> Result<i32>
         let branch = arguments
             .branch
             .as_deref()
-            .or(feature_branch.as_deref())
+            .or(feature_branch)
             .unwrap_or(&repository.default_branch);
         if arguments.create {
             return match git::create_and_checkout_branch(
@@ -763,10 +899,27 @@ fn checkout(arguments: CheckoutArgs, jobs: usize, _verbose: bool) -> Result<i32>
         &results,
         &branches,
         &default_branches,
+        current_feature_branch.as_deref(),
     ))
 }
 
 fn merge(arguments: MergeArgs, jobs: usize, verbose: bool) -> Result<i32> {
+    let feature_branch = if arguments.feature {
+        match settings::current_feature_branch()? {
+            Some(branch) => Some(branch),
+            None => {
+                println!("CURRENT_FEATURE_BRANCH is not set; nothing to merge");
+                return Ok(0);
+            }
+        }
+    } else {
+        None
+    };
+    let branch = arguments
+        .branch
+        .as_deref()
+        .or(feature_branch.as_deref())
+        .expect("clap requires a branch or --feature");
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
     let mut manifest = workspace::read(&root)?;
@@ -795,7 +948,7 @@ fn merge(arguments: MergeArgs, jobs: usize, verbose: bool) -> Result<i32> {
         if status.changes.total() != 0 {
             return RepositoryResult::failed(repository, "working tree is not clean");
         }
-        if status.branch == arguments.branch {
+        if status.branch == branch {
             return RepositoryResult::skipped(repository, "source is the current branch");
         }
 
@@ -814,24 +967,23 @@ fn merge(arguments: MergeArgs, jobs: usize, verbose: bool) -> Result<i32> {
             }
         }
 
-        let source =
-            match git::checkout_target(&path, &arguments.branch, arguments.remote.as_deref()) {
-                Ok(CheckoutTarget::Local) => arguments.branch.clone(),
-                Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
-                Ok(CheckoutTarget::Missing) => {
-                    return RepositoryResult::skipped(
-                        repository,
-                        format!("branch {} does not exist", arguments.branch),
-                    );
-                }
-                Ok(CheckoutTarget::Ambiguous(matches)) => {
-                    return RepositoryResult::failed(
-                        repository,
-                        format!("branch is ambiguous: {}", matches.join(", ")),
-                    );
-                }
-                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
-            };
+        let source = match git::checkout_target(&path, branch, arguments.remote.as_deref()) {
+            Ok(CheckoutTarget::Local) => branch.to_owned(),
+            Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
+            Ok(CheckoutTarget::Missing) => {
+                return RepositoryResult::skipped(
+                    repository,
+                    format!("branch {branch} does not exist"),
+                );
+            }
+            Ok(CheckoutTarget::Ambiguous(matches)) => {
+                return RepositoryResult::failed(
+                    repository,
+                    format!("branch is ambiguous: {}", matches.join(", ")),
+                );
+            }
+            Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+        };
         match git::run(
             &path,
             ["merge", "--no-edit", source.as_str()],
@@ -889,6 +1041,7 @@ fn list(arguments: ListArgs, jobs: usize) -> Result<i32> {
             })?
         );
     } else {
+        let feature_branch = settings::current_feature_branch()?;
         let rows: Vec<Vec<String>> = repositories
             .into_iter()
             .map(|repository| {
@@ -902,7 +1055,7 @@ fn list(arguments: ListArgs, jobs: usize) -> Result<i32> {
                 };
                 vec![
                     repository.name.to_owned(),
-                    color_default_branch(&state, repository.default_branch),
+                    color::branch(&state, repository.default_branch, feature_branch.as_deref()),
                     color::blue(repository.default_branch),
                 ]
             })
@@ -970,6 +1123,7 @@ struct WorkspaceStatusRow {
 fn status(jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
+    let feature_branch = settings::current_feature_branch()?;
     let statuses = map_ordered(&manifest.repositories, jobs, |repository| {
         let path = root.join(&repository.directory);
         if !path.exists() {
@@ -1033,7 +1187,11 @@ fn status(jobs: usize) -> Result<i32> {
                 status.kind.colored_label(),
                 status.changes.clone(),
                 status.upstream.clone(),
-                color_default_branch(&status.branch, &status.default_branch),
+                color::branch(
+                    &status.branch,
+                    &status.default_branch,
+                    feature_branch.as_deref(),
+                ),
             ]
         })
         .collect::<Vec<_>>();
@@ -1160,6 +1318,7 @@ fn find(arguments: FindArgs, jobs: usize) -> Result<i32> {
             })?
         );
     } else {
+        let feature_branch = settings::current_feature_branch()?;
         let rows = matches
             .iter()
             .map(|branch| {
@@ -1172,7 +1331,11 @@ fn find(arguments: FindArgs, jobs: usize) -> Result<i32> {
                     } else {
                         "no".to_owned()
                     },
-                    color_default_branch(&branch.name, &branch.default_branch),
+                    color::branch(
+                        &branch.name,
+                        &branch.default_branch,
+                        feature_branch.as_deref(),
+                    ),
                 ]
             })
             .collect::<Vec<_>>();
@@ -1210,8 +1373,8 @@ fn find(arguments: FindArgs, jobs: usize) -> Result<i32> {
 fn info(arguments: InfoArgs, jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
+    let current_feature_branch = settings::current_feature_branch()?;
     let Some(selector) = arguments.repository.as_deref() else {
-        let current_feature_branch = settings::current_feature_branch()?;
         let runtime = map_ordered(&manifest.repositories, jobs, |repository| {
             git::repository_runtime_info(&root.join(&repository.directory))
         })?;
@@ -1317,14 +1480,14 @@ fn info(arguments: InfoArgs, jobs: usize) -> Result<i32> {
     if arguments.json {
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
-        print_repository_info(&output);
+        print_repository_info(&output, current_feature_branch.as_deref());
     }
     Ok(i32::from(
         runtime.state != RepositoryRuntimeState::Available,
     ))
 }
 
-fn print_repository_info(output: &RepositoryInfoOutput) {
+fn print_repository_info(output: &RepositoryInfoOutput, feature_branch: Option<&str>) {
     let branches = match (output.local_branches, output.remote_branches) {
         (Some(local), Some(remote)) => format!("{local} local, {remote} remote"),
         _ => "-".to_owned(),
@@ -1338,7 +1501,7 @@ fn print_repository_info(output: &RepositoryInfoOutput) {
             "CURRENT BRANCH".to_owned(),
             output.current_branch.as_ref().map_or_else(
                 || "-".to_owned(),
-                |branch| color_default_branch(branch, &output.default_branch),
+                |branch| color::branch(branch, &output.default_branch, feature_branch),
             ),
         ],
         vec![
@@ -1386,14 +1549,6 @@ fn color_runtime_state(state: &str) -> String {
     }
 }
 
-fn color_default_branch(branch: &str, default_branch: &str) -> String {
-    if branch == default_branch {
-        color::blue(branch)
-    } else {
-        branch.to_owned()
-    }
-}
-
 fn wildcard_matches(pattern: &str, value: &str) -> bool {
     let pattern = pattern.chars().collect::<Vec<_>>();
     let value = value.chars().collect::<Vec<_>>();
@@ -1419,6 +1574,7 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
 fn branch(jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
+    let feature_branch = settings::current_feature_branch()?;
     let states = map_ordered(&manifest.repositories, jobs, |repository| {
         let path = root.join(&repository.directory);
         let state = if !path.exists() {
@@ -1430,7 +1586,11 @@ fn branch(jobs: usize) -> Result<i32> {
         };
         (
             repository.name.clone(),
-            color_default_branch(&state, &repository.default_branch),
+            color::branch(
+                &state,
+                &repository.default_branch,
+                feature_branch.as_deref(),
+            ),
         )
     })?;
     let rows: Vec<Vec<String>> = states

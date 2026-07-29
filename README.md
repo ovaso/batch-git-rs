@@ -9,9 +9,9 @@
 
 - 扫描已有目录并生成工作区清单；
 - 从清单恢复缺失仓库，或克隆并自动登记单个仓库；
-- 批量 fetch、fast-forward pull、checkout、merge 和查看状态；
+- 批量 fetch、fast-forward pull、push、checkout、merge 和查看状态；
 - 按仓库精确选择或按名称通配后执行原生 Git 命令；
-- 在 macOS `launchd` 或 Linux `systemd --user` 中注册定时同步；
+- 在 macOS `launchd`、Linux `systemd --user` 或 Windows Task Scheduler 中注册定时同步；
 - 有界并发、稳定输出顺序、工作区锁和聚合退出码。
 
 `batch-git` 不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
@@ -89,6 +89,7 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 | 查看当前分支 | `batch-git branch` |
 | 安全更新远端引用 | `batch-git fetch` 或 `batch-git sync` |
 | fast-forward 更新当前分支 | `batch-git pull` |
+| 推送当前 tracking 分支 | `batch-git push` |
 | 切换同名分支 | `batch-git checkout <branch>` |
 | 切换各仓库默认分支 | `batch-git cd` |
 | 搜索本地或远端分支 | `batch-git find 'feature/*'` |
