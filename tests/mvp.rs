@@ -247,6 +247,35 @@ fn scan_discovers_repositories_and_passthrough_finds_parent_workspace() {
 }
 
 #[test]
+fn managed_clone_proxies_branch_depth_and_single_branch_to_git() {
+    let fixture = Fixture::new("clone-options");
+    let workspace = tempfile::tempdir().unwrap();
+
+    batch_git(workspace.path())
+        .args([
+            "clone",
+            fixture.remote.to_str().unwrap(),
+            "shallow-main",
+            "--branch",
+            "main",
+            "--depth",
+            "1",
+            "--single-branch",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("registered shallow-main"));
+
+    let repository = workspace.path().join("shallow-main");
+    assert!(repository.join(".git/shallow").is_file());
+    assert_eq!(
+        git_output(&repository, ["branch", "--show-current"]),
+        "main"
+    );
+    assert_eq!(git_output(&repository, ["branch", "-r"]), "origin/main");
+}
+
+#[test]
 fn managed_clone_restore_fetch_and_checkout_form_a_closed_loop() {
     let fixture = Fixture::new("service-two");
     let source = tempfile::tempdir().unwrap();

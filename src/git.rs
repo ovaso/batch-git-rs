@@ -2,16 +2,14 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::io::{self, BufRead, BufReader, IsTerminal};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use anyhow::{Context, Result, bail};
-use git2::build::{CheckoutBuilder, RepoBuilder};
-use git2::{
-    BranchType, Config, Cred, CredentialType, FetchOptions, FetchPrune, RemoteCallbacks,
-    Repository, Status, StatusOptions,
-};
+use git2::build::CheckoutBuilder;
+use git2::{BranchType, Repository, Status, StatusOptions};
 use url::Url;
 
 use crate::model::{RemoteRecord, RepositoryRecord};
@@ -116,6 +114,7 @@ pub struct CloneOptions<'a> {
     pub depth: Option<usize>,
     pub single_branch: bool,
     pub progress: Option<CloneProgress>,
+    pub allow_stdin: bool,
 }
 
 pub type CloneProgress = Arc<dyn Fn(usize, usize) + Send + Sync>;
@@ -203,6 +202,20 @@ where
     if !allow_stdin {
         command.stdin(Stdio::null());
     }
+    if allow_stdin && !managed && terminal_is_interactive() {
+        let status = command
+            .status()
+            .with_context(|| format!("failed to execute Git in {}", directory.display()))?;
+        return Ok(GitOutput {
+            success: status.success(),
+            code: status.code(),
+            stdout: String::new(),
+            stderr: String::new(),
+        });
+    }
+    if allow_stdin && managed && io::stderr().is_terminal() {
+        command.stderr(Stdio::inherit());
+    }
     let output = command
         .output()
         .with_context(|| format!("failed to execute Git in {}", directory.display()))?;
@@ -214,6 +227,10 @@ where
     })
 }
 
+fn terminal_is_interactive() -> bool {
+    io::stdin().is_terminal() && io::stdout().is_terminal() && io::stderr().is_terminal()
+}
+
 pub fn run_os(
     directory: &Path,
     args: &[OsString],
@@ -223,119 +240,84 @@ pub fn run_os(
     run(directory, args, managed, allow_stdin)
 }
 
-fn remote_callbacks<'a>(
-    config: &'a Config,
-    progress: Option<CloneProgress>,
-) -> RemoteCallbacks<'a> {
-    let mut callbacks = RemoteCallbacks::new();
-    callbacks.credentials(move |url, username, allowed| {
-        if allowed.contains(CredentialType::SSH_KEY)
-            && let Some(username) = username
-        {
-            return Cred::ssh_key_from_agent(username);
-        }
-        if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) {
-            return Cred::credential_helper(config, url, username);
-        }
-        if allowed.contains(CredentialType::USERNAME)
-            && let Some(username) = username
-        {
-            return Cred::username(username);
-        }
-        Cred::default()
-    });
-    if let Some(progress) = progress {
-        callbacks.transfer_progress(move |stats| {
-            progress(stats.received_objects(), stats.total_objects());
-            true
-        });
-    }
-    callbacks
-}
-
-fn fetch_options(
-    config: &Config,
-    depth: Option<usize>,
-    progress: Option<CloneProgress>,
-) -> Result<FetchOptions<'_>> {
-    let mut options = FetchOptions::new();
-    options.remote_callbacks(remote_callbacks(config, progress));
-    options.prune(FetchPrune::On);
-    if let Some(depth) = depth {
-        let depth = i32::try_from(depth).context("clone depth is too large")?;
-        options.depth(depth);
-    }
-    Ok(options)
-}
-
-pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> Result<Repository> {
-    let config = Config::open_default().context("failed to open Git configuration")?;
-    let mut builder = RepoBuilder::new();
-    builder.fetch_options(fetch_options(
-        &config,
-        options.depth,
-        options.progress.clone(),
-    )?);
+pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> Result<()> {
+    let mut command = Command::new("git");
+    command.arg("clone").args(["--origin", options.remote_name]);
     if let Some(branch) = options.branch {
-        builder.branch(branch);
+        command.args(["--branch", branch]);
     }
-    if options.remote_name != "origin" || (options.single_branch && options.branch.is_some()) {
-        let remote_name = options.remote_name.to_owned();
-        let branch = options.branch.map(str::to_owned);
-        let single_branch = options.single_branch;
-        builder.remote_create(move |repository, _, remote_url| {
-            if single_branch && let Some(branch) = branch.as_deref() {
-                let refspec = format!("+refs/heads/{branch}:refs/remotes/{remote_name}/{branch}");
-                repository.remote_with_fetch(&remote_name, remote_url, &refspec)
-            } else {
-                repository.remote(&remote_name, remote_url)
+    if let Some(depth) = options.depth {
+        command.args(["--depth", &depth.to_string()]);
+        command.arg("--no-local");
+    }
+    if options.single_branch {
+        command.arg("--single-branch");
+    }
+    command.arg("--").arg(url).arg(target);
+    command.env_remove("GIT_CONFIG_COUNT");
+    for variable in ROUTING_ENVIRONMENT {
+        command.env_remove(variable);
+    }
+    if !options.allow_stdin {
+        command.stdin(Stdio::null());
+    }
+
+    if let Some(progress) = options.progress {
+        command.stdout(Stdio::null()).stderr(Stdio::piped());
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("failed to execute Git clone for {url}"))?;
+        let stderr = child
+            .stderr
+            .take()
+            .context("failed to capture Git clone progress")?;
+        let mut message = Vec::new();
+        for chunk in BufReader::new(stderr).split(b'\r') {
+            let chunk = chunk.context("failed to read Git clone progress")?;
+            message.extend_from_slice(&chunk);
+            message.push(b'\n');
+            if let Some((received, total)) = clone_progress_counts(&chunk) {
+                progress(received, total);
             }
-        });
-    }
-    let repository = builder
-        .clone(url, target)
-        .with_context(|| format!("failed to clone {url} into {}", target.display()))?;
-    if options.single_branch && options.branch.is_none() {
-        restrict_to_current_branch(&repository, options.remote_name)?;
-    }
-    Ok(repository)
-}
-
-fn restrict_to_current_branch(repository: &Repository, remote_name: &str) -> Result<()> {
-    let branch_name = repository
-        .head()
-        .context("failed to read cloned HEAD")?
-        .shorthand()
-        .context("cloned HEAD has no branch name")?
-        .to_owned();
-    let refspec = format!("+refs/heads/{branch_name}:refs/remotes/{remote_name}/{branch_name}");
-    repository
-        .config()
-        .context("failed to open repository config")?
-        .set_str(&format!("remote.{remote_name}.fetch"), &refspec)
-        .context("failed to configure single-branch fetch")?;
-
-    let keep = format!("{remote_name}/{branch_name}");
-    let mut remove = Vec::new();
-    for branch in repository
-        .branches(Some(BranchType::Remote))
-        .context("failed to enumerate cloned remote branches")?
-    {
-        let (branch, _) = branch.context("failed to inspect cloned remote branch")?;
-        if let Some(name) = branch.name().context("remote branch name is not UTF-8")?
-            && name != keep
-        {
-            remove.push(name.to_owned());
         }
+        let status = child.wait().context("failed to wait for Git clone")?;
+        if !status.success() {
+            bail!(
+                "Git clone failed with {status}: {}",
+                String::from_utf8_lossy(&message).trim()
+            );
+        }
+        return Ok(());
     }
-    for name in remove {
-        repository
-            .find_branch(&name, BranchType::Remote)
-            .with_context(|| format!("failed to read remote branch {name}"))?
-            .delete()
-            .with_context(|| format!("failed to remove remote branch {name}"))?;
+
+    if options.allow_stdin && terminal_is_interactive() {
+        let status = command
+            .status()
+            .with_context(|| format!("failed to execute Git clone for {url}"))?;
+        if !status.success() {
+            bail!("Git clone failed with {status}");
+        }
+        return Ok(());
+    }
+
+    let output = command
+        .output()
+        .with_context(|| format!("failed to execute Git clone for {url}"))?;
+    if !output.status.success() {
+        bail!(
+            "Git clone failed with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
     }
     Ok(())
+}
+
+fn clone_progress_counts(message: &[u8]) -> Option<(usize, usize)> {
+    let message = String::from_utf8_lossy(message);
+    let counters = message.rsplit_once('(')?.1.strip_suffix(')')?;
+    let (received, total) = counters.split_once('/')?;
+    Some((received.trim().parse().ok()?, total.trim().parse().ok()?))
 }
 
 pub fn fetch_all(path: &Path, allow_stdin: bool) -> Result<GitOutput> {
@@ -956,11 +938,18 @@ pub fn configure_declared_remotes(
             .set_str(&format!("remote.{}.fetch", remote.name), &refspec)
             .with_context(|| format!("failed to configure fetch refspec for {}", remote.name))?;
 
-        if let Some(push_url) = &remote.push_url
-            && push_url != &remote.fetch_url
-        {
+        let push_url = remote
+            .push_url
+            .as_deref()
+            .filter(|push_url| *push_url != remote.fetch_url);
+        let has_push_url = git_repository
+            .find_remote(&remote.name)
+            .with_context(|| format!("failed to read remote {}", remote.name))?
+            .pushurl()
+            .is_some();
+        if push_url.is_some() || has_push_url {
             git_repository
-                .remote_set_pushurl(&remote.name, Some(push_url))
+                .remote_set_pushurl(&remote.name, push_url)
                 .with_context(|| format!("failed to configure push URL for {}", remote.name))?;
         }
     }
@@ -1054,7 +1043,9 @@ pub fn display_remote_url(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::display_remote_url;
+    use crate::model::{RemoteRecord, RepositoryRecord, now};
+
+    use super::{configure_declared_remotes, display_remote_url};
 
     #[test]
     fn display_remote_url_removes_http_credentials() {
@@ -1065,6 +1056,49 @@ mod tests {
         assert_eq!(
             display_remote_url("git@example.com:team/repository.git"),
             "git@example.com:team/repository.git"
+        );
+    }
+
+    #[test]
+    fn declared_push_url_replaces_and_clears_local_configuration() {
+        let directory = tempfile::tempdir().unwrap();
+        let repository = git2::Repository::init(directory.path()).unwrap();
+        repository
+            .remote("origin", "https://example.com/fetch.git")
+            .unwrap();
+        repository
+            .remote_set_pushurl("origin", Some("https://example.com/stale.git"))
+            .unwrap();
+
+        let timestamp = now();
+        let mut record = RepositoryRecord {
+            name: "example".to_owned(),
+            directory: "example".to_owned(),
+            default_branch: "main".to_owned(),
+            primary_remote: "origin".to_owned(),
+            remotes: vec![RemoteRecord {
+                name: "origin".to_owned(),
+                fetch_url: "https://example.com/fetch.git".to_owned(),
+                push_url: None,
+            }],
+            created_at: timestamp,
+            synced_at: None,
+        };
+
+        configure_declared_remotes(directory.path(), &record, false).unwrap();
+        assert!(
+            repository
+                .find_remote("origin")
+                .unwrap()
+                .pushurl()
+                .is_none()
+        );
+
+        record.remotes[0].push_url = Some("https://example.com/push.git".to_owned());
+        configure_declared_remotes(directory.path(), &record, false).unwrap();
+        assert_eq!(
+            repository.find_remote("origin").unwrap().pushurl(),
+            Some("https://example.com/push.git")
         );
     }
 }

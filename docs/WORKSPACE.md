@@ -49,7 +49,7 @@ all = true
 | `synced_at` | 否 | 最近一次成功同步时间 |
 | `remotes` | 是 | 至少一个命名远端 |
 | `fetch_url` | 是 | fetch URL |
-| `push_url` | 否 | 独立 push URL |
+| `push_url` | 否 | 独立 push URL；省略或等于 `fetch_url` 时清除仓库中的独立 push URL |
 
 清单不保存当前分支、所有本地/远端分支、HEAD、tag 或工作树修改。这些动态数据
 始终以仓库 `.git` 为准。

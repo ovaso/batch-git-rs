@@ -208,6 +208,7 @@ fn clone_repository(arguments: CloneArgs) -> Result<i32> {
             depth: arguments.depth,
             single_branch: arguments.single_branch,
             progress: None,
+            allow_stdin: true,
         },
     ) {
         eprintln!("clone failed: {error:#}");
@@ -383,6 +384,7 @@ fn restore_one(
             depth: None,
             single_branch: true,
             progress: clone_progress,
+            allow_stdin,
         },
     ) {
         Ok(_) => {}

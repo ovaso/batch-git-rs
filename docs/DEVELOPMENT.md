@@ -2,8 +2,8 @@
 
 ## 1. 技术边界
 
-- `git2/libgit2`：仓库读取、clone、fetch/prune、checkout、远端和分支配置；
-- 系统 Git CLI：merge、pull 以及 `--` 后的精确透传；
+- `git2/libgit2`：本地仓库读取、checkout、远端和分支配置，不启用网络特性；
+- 系统 Git CLI：clone、fetch、push、merge、pull 以及 `--` 后的精确透传；
 - `workspace.toml`：声明式、可复制的工作区清单；
 - `.workspace.lock`：串行化可能修改 Git 状态或清单的 batch-git 进程；
 - Rayon：有界并发和稳定结果顺序；
@@ -24,6 +24,10 @@ cargo build --release
 ./target/release/batch-git --help
 ./target/release/batch-git schedule --help
 ```
+
+发布构建还应检查动态依赖，确保没有意外链接本机构建环境中的 Homebrew、包管理器
+或其他非系统绝对路径。macOS 可使用 `otool -L target/release/batch-git`，Linux 可
+使用 `ldd target/release/batch-git`。
 
 `tests/mvp.rs` 覆盖主要端到端工作流；各模块内单元测试覆盖解析、清单校验、
 输出和平台定义生成。
@@ -56,6 +60,7 @@ cargo build --release
 - [ ] 没有在文档中把 `bit` 描述为自动安装的命令；
 - [ ] 已知限制已记录；
 - [ ] 发布产物执行 `batch-git --version` 正确。
+- [ ] 发布产物动态依赖不包含构建机私有或包管理器绝对路径。
 
 ## 5. 构建和安装脚本
 

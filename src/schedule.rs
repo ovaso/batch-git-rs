@@ -159,12 +159,15 @@ fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
         );
     }
     if arguments.unregister {
-        unregister(ScheduleUnregisterArgs {
-            name: arguments.name.clone(),
-            platform: SchedulePlatform::Auto,
-            dry_run: false,
-            purge_history: arguments.purge_history,
-        })?;
+        unregister_locked(
+            &root,
+            ScheduleUnregisterArgs {
+                name: arguments.name.clone(),
+                platform: SchedulePlatform::Auto,
+                dry_run: false,
+                purge_history: arguments.purge_history,
+            },
+        )?;
     }
     manifest.schedules.remove(index);
     workspace::write(&root, &mut manifest)?;
@@ -619,6 +622,7 @@ fn generate(arguments: SchedulePlatformArgs) -> Result<i32> {
 
 fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
     let root = workspace::find_root()?;
+    let _lock = WorkspaceLock::acquire(&root)?;
     let manifest = workspace::read(&root)?;
     let schedule = find_schedule(&manifest, &arguments.name)?;
     if !schedule.enabled {
@@ -728,7 +732,12 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
 
 fn unregister(arguments: ScheduleUnregisterArgs) -> Result<i32> {
     let root = workspace::find_root()?;
-    let state = load_state(&root, &arguments.name)?;
+    let _lock = WorkspaceLock::acquire(&root)?;
+    unregister_locked(&root, arguments)
+}
+
+fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i32> {
+    let state = load_state(root, &arguments.name)?;
     let Some(state) = state else {
         println!("schedule {} already absent", arguments.name);
         return Ok(0);
@@ -754,13 +763,13 @@ fn unregister(arguments: ScheduleUnregisterArgs) -> Result<i32> {
     }
     deactivate(&state)?;
     remove_registered_files(&state)?;
-    let state_path = registration_state_path(&root, &arguments.name)?;
+    let state_path = registration_state_path(root, &arguments.name)?;
     if state_path.exists() {
         fs::remove_file(&state_path)
             .with_context(|| format!("failed to remove {}", state_path.display()))?;
     }
     if arguments.purge_history {
-        let logs = schedule_log_directory(&root, &arguments.name)?;
+        let logs = schedule_log_directory(root, &arguments.name)?;
         if logs.is_dir() {
             fs::remove_dir_all(&logs)
                 .with_context(|| format!("failed to remove {}", logs.display()))?;

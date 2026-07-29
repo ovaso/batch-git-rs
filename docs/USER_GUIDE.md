@@ -73,6 +73,8 @@ batch-git clone -b develop --depth 10 --single-branch \
 ```
 
 克隆成功后才会写入清单。目标目录必须是工作区内的相对路径且不能已经存在。
+`batch-git clone` 是系统 `git clone` 的受控代理：上述选项会映射到原生 Git，
+认证、credential helper、SSH 配置和代理设置也沿用用户现有的 Git 配置。
 
 ### 3.3 从清单恢复
 
@@ -164,6 +166,9 @@ up-to-date 或仅落后 upstream 的分支正常跳过，发生分叉时失败�
 `-u` / `--set-upstream` 时，才会推送到仓库的 primary remote 并建立 tracking；
 此时可用 `--remote` 选择其他远端。`--dry-run` 只预览，不修改远端或 upstream。
 工作树中的未提交内容不会被推送，但也不会阻止已提交内容执行 push。
+
+清单中的 `push_url` 是独立推送地址的声明来源。字段省略或与 `fetch_url` 相同时，
+同步配置会清除仓库中遗留的独立 push URL，push 将回退到 fetch URL。
 
 ## 6. 分支操作
 
@@ -261,7 +266,8 @@ batch-git --jobs 8 --verbose -- status
 batch-git --jobs 1 exec service-api -- rebase -i HEAD~3
 ```
 
-并发子进程不接收标准输入；Git 命令需要交互时使用 `--jobs 1`。透传
+并发子进程不接收标准输入；Git 命令需要交互时使用 `--jobs 1`。在交互终端中，
+单任务透传会把标准输入、输出和错误流直接交给 Git。透传
 `git commit` 遇到明确的 “nothing to commit” 时记为 `skipped`，不会导致聚合失败。
 
 ## 8. 登记管理
