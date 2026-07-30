@@ -6,12 +6,16 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 
+/// 在识别 Git 透传边界前允许出现的全局运行参数。
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeOptions {
+    /// 最大并发仓库数；未提供时稍后从环境变量或默认值解析。
     pub jobs: Option<usize>,
+    /// 是否显示成功子进程的输出。
     pub verbose: bool,
 }
 
+/// 一次调用要么进入内建命令解析器，要么原样透传给 Git。
 pub enum Invocation {
     BuiltIn(Vec<OsString>),
     Passthrough {
@@ -20,11 +24,13 @@ pub enum Invocation {
     },
 }
 
+/// 在不损失 `OsString` 的前提下识别显式 `--` 命令边界。
 pub fn parse_invocation(args: Vec<OsString>) -> Result<Invocation> {
     if args.is_empty() {
         bail!("missing argv[0]");
     }
 
+    // 跳过 argv[0]，只手工消费透传模式也支持的少量全局选项。
     let mut index = 1;
     let mut options = RuntimeOptions::default();
     while index < args.len() {
@@ -46,6 +52,7 @@ pub fn parse_invocation(args: Vec<OsString>) -> Result<Invocation> {
         }
     }
 
+    // 只有显式分隔符才进入透传，未知内建命令不会被悄悄当作 Git 子命令。
     if args.get(index).is_some_and(|value| value == "--") {
         let passthrough = args[index + 1..].to_vec();
         if passthrough.is_empty() {
@@ -60,6 +67,7 @@ pub fn parse_invocation(args: Vec<OsString>) -> Result<Invocation> {
     Ok(Invocation::BuiltIn(args))
 }
 
+/// 解析透传模式中的 `--jobs`，并提前拒绝零并发。
 fn parse_jobs(value: &OsString) -> Result<usize> {
     let jobs = value
         .to_string_lossy()
@@ -71,6 +79,7 @@ fn parse_jobs(value: &OsString) -> Result<usize> {
     Ok(jobs)
 }
 
+/// clap 解析后的顶层命令行结构。
 #[derive(Debug, Parser)]
 #[command(
     name = "batch-git",
@@ -91,6 +100,7 @@ pub struct Cli {
     pub command: Command,
 }
 
+/// 所有受 batch-git 约束和解释的内建命令。
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Show the current branch of every registered repository.
@@ -140,6 +150,7 @@ pub enum Command {
     Sync(SyncArgs),
 }
 
+/// 受控 clone 的参数集合。
 #[derive(Debug, Args)]
 pub struct CloneArgs {
     /// Repository URL.
@@ -161,6 +172,7 @@ pub struct CloneArgs {
     pub single_branch: bool,
 }
 
+/// 扫描已有目录的参数。
 #[derive(Debug, Args)]
 pub struct ScanArgs {
     /// Maximum directory depth to scan; defaults to BATCH_GIT_SCAN_DEPTH or 1.
@@ -168,6 +180,7 @@ pub struct ScanArgs {
     pub depth: Option<usize>,
 }
 
+/// 多个命令共享的仓库选择参数。
 #[derive(Debug, Args)]
 pub struct SyncArgs {
     /// Repository name or workspace-relative directory; defaults to the whole workspace.
@@ -182,6 +195,7 @@ pub struct SyncArgs {
     pub all: bool,
 }
 
+/// 安全批量 push 的参数。
 #[derive(Debug, Args)]
 pub struct PushArgs {
     #[command(flatten)]

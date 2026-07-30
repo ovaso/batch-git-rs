@@ -25,6 +25,7 @@ use crate::settings;
 use crate::table;
 use crate::workspace::{self, WorkspaceLock};
 
+/// 将 schedule 子命令分派到声明管理、执行或原生平台操作。
 pub(crate) fn dispatch(arguments: ScheduleArgs, jobs: usize, verbose: bool) -> Result<i32> {
     match arguments.command {
         ScheduleCommand::Add(arguments) => add(arguments),
@@ -42,6 +43,7 @@ pub(crate) fn dispatch(arguments: ScheduleArgs, jobs: usize, verbose: bool) -> R
     }
 }
 
+/// 校验并向 workspace.toml 添加新的定时任务声明。
 fn add(arguments: ScheduleAddArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -76,6 +78,7 @@ fn add(arguments: ScheduleAddArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 更新声明中明确提供的字段，并提示用户重新注册原生任务。
 fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
     let has_trigger =
         arguments.at.is_some() || arguments.every.is_some() || arguments.cron.is_some();
@@ -140,6 +143,7 @@ fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 删除声明；已注册任务必须先反注册或显式要求一并处理。
 fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -175,6 +179,7 @@ fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 将名称或目录选择器解析为稳定的仓库名称列表。
 fn normalized_scope(
     manifest: &Workspace,
     all: bool,
@@ -194,6 +199,7 @@ fn normalized_scope(
     })
 }
 
+/// 把 CLI 枚举转换为持久化模型枚举。
 fn convert_overlap(overlap: ScheduleOverlapValue) -> ScheduleOverlap {
     match overlap {
         ScheduleOverlapValue::Skip => ScheduleOverlap::Skip,
@@ -201,6 +207,7 @@ fn convert_overlap(overlap: ScheduleOverlapValue) -> ScheduleOverlap {
     }
 }
 
+/// 把 CLI 动作转换为持久化模型动作。
 fn convert_action(action: ScheduleActionValue) -> ScheduleAction {
     match action {
         ScheduleActionValue::Sync => ScheduleAction::Sync,
@@ -208,6 +215,7 @@ fn convert_action(action: ScheduleActionValue) -> ScheduleAction {
     }
 }
 
+/// `schedule plan` 的人类输出与 JSON 输出共用模型。
 #[derive(Debug, Serialize)]
 struct PlanOutput {
     schedule: String,
@@ -217,6 +225,7 @@ struct PlanOutput {
     repositories: Vec<String>,
 }
 
+/// 只展示计划实际动作和仓库范围，不执行 Git 或系统调度器操作。
 fn plan(arguments: ScheduleNameArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -229,6 +238,7 @@ fn plan(arguments: ScheduleNameArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 从经过校验的清单构造已解析计划。
 fn build_plan(manifest: &Workspace, name: &str) -> Result<PlanOutput> {
     let schedule = find_schedule(manifest, name)?;
     if !schedule.enabled {
@@ -247,6 +257,7 @@ fn build_plan(manifest: &Workspace, name: &str) -> Result<PlanOutput> {
     })
 }
 
+/// 打印适合用户审核的计划摘要。
 fn print_plan(output: &PlanOutput) {
     let rows = output
         .repositories
@@ -264,6 +275,7 @@ fn print_plan(output: &PlanOutput) {
     );
 }
 
+/// 立即执行声明，并根据 overlap 策略阻塞或跳过工作区锁。
 fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let initial = workspace::read(&root)?;
@@ -294,6 +306,7 @@ fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
     }
 }
 
+/// 供原生调度器调用的隐藏入口，负责日志重定向和稳定运行环境。
 fn native_run(arguments: ScheduleNativeRunArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let mut command =
@@ -337,6 +350,7 @@ fn native_run(arguments: ScheduleNativeRunArgs) -> Result<i32> {
     Ok(status.code().unwrap_or(1))
 }
 
+/// schedule list 的单行序列化模型。
 #[derive(Serialize)]
 struct ScheduleListItem {
     name: String,
@@ -347,6 +361,7 @@ struct ScheduleListItem {
     registered: Option<String>,
 }
 
+/// 列出清单声明，并可显示已有本地注册状态的平台。
 fn list(arguments: ScheduleListArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -407,6 +422,7 @@ fn list(arguments: ScheduleListArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// schedule status 汇总的声明、文件和原生加载状态。
 #[derive(Serialize)]
 struct StatusOutput {
     name: String,
@@ -428,6 +444,7 @@ struct StatusOutput {
     updated_at: Option<String>,
 }
 
+/// 对比当前声明、注册摘要、原生文件和系统任务实际状态。
 fn status(arguments: ScheduleNameArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -568,6 +585,7 @@ fn status(arguments: ScheduleNameArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 在不写文件的前提下验证声明能否映射到目标原生平台。
 fn doctor(arguments: ScheduleDoctorArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -610,6 +628,7 @@ fn doctor(arguments: ScheduleDoctorArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 生成并打印原生定义，供用户在注册前审核。
 fn generate(arguments: SchedulePlatformArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -620,8 +639,10 @@ fn generate(arguments: SchedulePlatformArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 幂等创建或更新原生任务，并原子记录注册摘要。
 fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
     let root = workspace::find_root()?;
+    // 注册同时读取清单、写原生文件和状态摘要，必须与工作区更新串行化。
     let _lock = WorkspaceLock::acquire(&root)?;
     let manifest = workspace::read(&root)?;
     let schedule = find_schedule(&manifest, &arguments.name)?;
@@ -730,12 +751,14 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 获取工作区锁后反注册一个原生任务。
 fn unregister(arguments: ScheduleUnregisterArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
     unregister_locked(&root, arguments)
 }
 
+/// 在调用方已持锁时停用任务、移除定义和可选历史记录。
 fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i32> {
     let state = load_state(root, &arguments.name)?;
     let Some(state) = state else {
@@ -782,6 +805,7 @@ fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i
     Ok(0)
 }
 
+/// 按唯一名称查找计划并生成一致的未知计划错误。
 fn find_schedule<'a>(manifest: &'a Workspace, name: &str) -> Result<&'a ScheduleRecord> {
     manifest
         .schedules
@@ -790,6 +814,7 @@ fn find_schedule<'a>(manifest: &'a Workspace, name: &str) -> Result<&'a Schedule
         .ok_or_else(|| anyhow::anyhow!("unknown schedule: {name}"))
 }
 
+/// 把 schedule scope 解析为命令执行层可直接使用的仓库记录。
 fn selected_repositories(
     manifest: &Workspace,
     schedule: &ScheduleRecord,
@@ -802,6 +827,7 @@ fn selected_repositories(
     )
 }
 
+/// 将互斥触发器转换为紧凑显示文本。
 fn trigger_label(schedule: &ScheduleRecord) -> String {
     schedule
         .at
@@ -817,6 +843,7 @@ fn trigger_label(schedule: &ScheduleRecord) -> String {
         .unwrap_or_else(|| "invalid".to_owned())
 }
 
+/// 返回 overlap 策略的稳定文本值。
 fn overlap_label(overlap: ScheduleOverlap) -> &'static str {
     match overlap {
         ScheduleOverlap::Skip => "skip",
@@ -824,6 +851,7 @@ fn overlap_label(overlap: ScheduleOverlap) -> &'static str {
     }
 }
 
+/// 返回 schedule 动作的稳定文本值。
 fn action_label(action: ScheduleAction) -> &'static str {
     match action {
         ScheduleAction::Sync => "sync",
@@ -831,6 +859,7 @@ fn action_label(action: ScheduleAction) -> &'static str {
     }
 }
 
+/// 支持生成和注册的原生用户级调度器。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NativePlatform {
     Launchd,
@@ -839,6 +868,7 @@ enum NativePlatform {
 }
 
 impl NativePlatform {
+    /// 将 CLI 的 auto 或显式平台选择解析为确定平台。
     fn resolve(platform: SchedulePlatform) -> Result<Self> {
         match platform {
             SchedulePlatform::Launchd => Ok(Self::Launchd),
@@ -865,6 +895,7 @@ impl NativePlatform {
         }
     }
 
+    /// 返回写入注册摘要的稳定平台名。
     fn label(self) -> &'static str {
         match self {
             Self::Launchd => "launchd",
@@ -873,6 +904,7 @@ impl NativePlatform {
         }
     }
 
+    /// 从注册摘要恢复平台枚举，并拒绝未知值。
     fn from_label(label: &str) -> Result<Self> {
         match label {
             "launchd" => Ok(Self::Launchd),
@@ -883,11 +915,13 @@ impl NativePlatform {
     }
 }
 
+/// 一个需要写入磁盘的原生定义文件。
 struct NativeFile {
     path: PathBuf,
     content: String,
 }
 
+/// 注册一次任务所需的全部原生文件和元数据。
 struct NativeArtifact {
     platform: NativePlatform,
     task_id: String,
@@ -898,6 +932,7 @@ struct NativeArtifact {
     files: Vec<NativeFile>,
 }
 
+/// 使用当前日志和时区配置生成原生任务产物。
 fn build_artifact(
     root: &Path,
     schedule: &ScheduleRecord,
@@ -912,6 +947,7 @@ fn build_artifact(
     )
 }
 
+/// 使用显式日志开关生成产物，供 status 重建期望定义。
 fn build_artifact_with_logging(
     root: &Path,
     schedule: &ScheduleRecord,
@@ -927,6 +963,7 @@ fn build_artifact_with_logging(
     )
 }
 
+/// 将统一 schedule 模型完整翻译为指定平台配置。
 fn build_artifact_with_options(
     root: &Path,
     schedule: &ScheduleRecord,
@@ -1139,6 +1176,7 @@ fn build_artifact_with_options(
     }
 }
 
+/// 按 Windows CommandLineToArgvW 规则引用单个命令行参数。
 fn windows_argument(value: &str) -> String {
     if !value.is_empty()
         && !value
@@ -1167,6 +1205,7 @@ fn windows_argument(value: &str) -> String {
     quoted
 }
 
+/// 把秒数转换为 Task Scheduler 接受的 ISO 8601 duration。
 fn windows_repetition_interval(seconds: u64) -> Result<String> {
     const MINIMUM: u64 = 60;
     const MAXIMUM: u64 = 31 * 24 * 60 * 60;
@@ -1199,6 +1238,7 @@ fn windows_repetition_interval(seconds: u64) -> Result<String> {
     Ok(value)
 }
 
+/// 将 cron 展开为 launchd 的 StartCalendarInterval 字典数组。
 fn launchd_cron_trigger(cron: &CronExpression) -> Result<String> {
     if cron.seconds() != [0] {
         bail!(
@@ -1247,10 +1287,12 @@ fn launchd_cron_trigger(cron: &CronExpression) -> Result<String> {
     Ok(format!("<key>StartCalendarInterval</key>{value}"))
 }
 
+/// 未限制字段用 None 表示，避免生成无意义的全值笛卡尔积。
 fn optional_cron_values(values: &[u8], unrestricted: bool) -> Option<Vec<u8>> {
     (!unrestricted).then(|| values.to_vec())
 }
 
+/// 把可选字段转换为至少含一个元素的迭代集合。
 fn optional_iter(values: &Option<Vec<u8>>) -> Vec<Option<u8>> {
     match values {
         Some(values) => values.iter().copied().map(Some).collect(),
@@ -1258,12 +1300,14 @@ fn optional_iter(values: &Option<Vec<u8>>) -> Vec<Option<u8>> {
     }
 }
 
+/// 仅在字段受限制时写入 launchd 整数字段。
 fn push_launchd_integer(output: &mut String, key: &str, value: Option<u8>) {
     if let Some(value) = value {
         output.push_str(&format!("<key>{key}</key><integer>{value}</integer>"));
     }
 }
 
+/// 把展开后的 cron 集合压缩为 systemd OnCalendar 文本。
 fn systemd_cron_trigger(cron: &CronExpression) -> String {
     let weekday = if cron.days_of_week_unrestricted() {
         String::new()
@@ -1296,6 +1340,7 @@ fn systemd_cron_trigger(cron: &CronExpression) -> String {
     )
 }
 
+/// 生成一个 systemd 日历字段，未限制字段输出星号。
 fn cron_component(values: &[u8], unrestricted: bool) -> String {
     if unrestricted {
         "*".to_owned()
@@ -1304,6 +1349,7 @@ fn cron_component(values: &[u8], unrestricted: bool) -> String {
     }
 }
 
+/// 将有序数字集合连接为逗号分隔文本。
 fn join_numbers(values: &[u8]) -> String {
     values
         .iter()
@@ -1312,6 +1358,7 @@ fn join_numbers(values: &[u8]) -> String {
         .join(",")
 }
 
+/// 打印每个生成文件的绝对路径和完整内容。
 fn print_artifact(artifact: &NativeArtifact) {
     for (index, file) in artifact.files.iter().enumerate() {
         if index > 0 {
@@ -1322,6 +1369,7 @@ fn print_artifact(artifact: &NativeArtifact) {
     }
 }
 
+/// 原子写入所有定义后激活任务；失败时尽量恢复旧文件。
 fn write_and_activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
     if let Some(log_directory) = &artifact.log_directory {
         fs::create_dir_all(log_directory).with_context(|| {
@@ -1356,6 +1404,7 @@ fn write_and_activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
     Ok(())
 }
 
+/// 调用目标平台命令加载或更新用户级任务。
 fn activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
     match artifact.platform {
         NativePlatform::Launchd => {
@@ -1400,6 +1449,7 @@ fn activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
     Ok(())
 }
 
+/// 根据注册摘要调用平台命令停用任务。
 fn deactivate(state: &RegistrationState) -> Result<()> {
     match state.platform.as_str() {
         "launchd" => {
@@ -1425,6 +1475,7 @@ fn deactivate(state: &RegistrationState) -> Result<()> {
     Ok(())
 }
 
+/// 更新失败并恢复旧文件后，尽力重新加载旧任务。
 fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
     match artifact.platform {
         NativePlatform::Launchd => {
@@ -1462,6 +1513,7 @@ fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
     Ok(())
 }
 
+/// 执行 systemctl --user 并统一补充错误上下文。
 fn run_systemctl<const N: usize>(arguments: [&str; N]) -> Result<()> {
     let status = Command::new("systemctl")
         .arg("--user")
@@ -1474,6 +1526,7 @@ fn run_systemctl<const N: usize>(arguments: [&str; N]) -> Result<()> {
     Ok(())
 }
 
+/// 查询目标平台是否已经存在同 ID 的原生任务。
 fn native_task_exists(platform: NativePlatform, task_id: &str) -> Result<bool> {
     if platform != NativePlatform::Windows {
         return Ok(false);
@@ -1495,6 +1548,7 @@ fn native_task_exists(platform: NativePlatform, task_id: &str) -> Result<bool> {
     }
 }
 
+/// 构造当前用户 launchd GUI domain，如 `gui/501`。
 fn launchd_domain() -> Result<String> {
     let output = Command::new("id")
         .arg("-u")
@@ -1506,6 +1560,7 @@ fn launchd_domain() -> Result<String> {
     Ok(format!("gui/{}", String::from_utf8(output.stdout)?.trim()))
 }
 
+/// 在目标目录写临时文件并原子替换单个原生定义。
 fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     let parent = path
         .parent()
@@ -1525,6 +1580,7 @@ fn atomic_write(path: &Path, content: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// batch-git 自己维护的注册事实，用于校验和安全反注册。
 #[derive(Debug, Serialize, Deserialize)]
 struct RegistrationState {
     workspace: String,
@@ -1543,14 +1599,17 @@ struct RegistrationState {
     updated_at: String,
 }
 
+/// 为旧状态文件补充日志开关默认值。
 fn default_true() -> bool {
     true
 }
 
+/// 把布尔值转换为表格使用的 yes/no。
 fn yes_no(value: bool) -> String {
     if value { "yes" } else { "no" }.to_owned()
 }
 
+/// 从原生调度器实时查询得到的运行状态。
 struct NativeStatus {
     loaded: bool,
     state: Option<String>,
@@ -1558,6 +1617,7 @@ struct NativeStatus {
     last_exit_code: Option<i32>,
 }
 
+/// 查询任务是否加载及最近退出状态；任务不存在不是致命错误。
 fn native_status(state: &RegistrationState) -> Result<NativeStatus> {
     match state.platform.as_str() {
         "launchd" => {
@@ -1639,6 +1699,7 @@ fn native_status(state: &RegistrationState) -> Result<NativeStatus> {
     }
 }
 
+/// 从 `key = value` 风格原生命令输出中提取字段。
 fn parse_native_value(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let (name, value) = line.trim().split_once('=')?;
@@ -1646,6 +1707,7 @@ fn parse_native_value(text: &str, key: &str) -> Option<String> {
     })
 }
 
+/// 从 systemctl show 的 `Key=Value` 输出中提取字段。
 fn parse_systemd_value(text: &str, key: &str) -> Option<String> {
     text.lines().find_map(|line| {
         let (name, value) = line.split_once('=')?;
@@ -1653,6 +1715,7 @@ fn parse_systemd_value(text: &str, key: &str) -> Option<String> {
     })
 }
 
+/// 读取并验证本地注册摘要；文件不存在表示尚未注册。
 fn load_state(root: &Path, name: &str) -> Result<Option<RegistrationState>> {
     let path = registration_state_path(root, name)?;
     if !path.is_file() {
@@ -1671,11 +1734,13 @@ fn load_state(root: &Path, name: &str) -> Result<Option<RegistrationState>> {
     Ok(Some(state))
 }
 
+/// 原子持久化注册摘要。
 fn write_state(root: &Path, state: &RegistrationState) -> Result<()> {
     let path = registration_state_path(root, &state.name)?;
     atomic_write(&path, serde_json::to_string_pretty(state)?.as_bytes())
 }
 
+/// 计算当前工作区和计划对应的状态文件路径。
 fn registration_state_path(root: &Path, name: &str) -> Result<PathBuf> {
     crate::model::validate_schedule_name(name)?;
     Ok(state_root()?
@@ -1687,6 +1752,7 @@ fn registration_state_path(root: &Path, name: &str) -> Result<PathBuf> {
         .join(format!("{name}.json")))
 }
 
+/// 计算隔离到工作区和计划名称的日志目录。
 fn schedule_log_directory(root: &Path, name: &str) -> Result<PathBuf> {
     crate::model::validate_schedule_name(name)?;
     Ok(state_root()?
@@ -1698,6 +1764,7 @@ fn schedule_log_directory(root: &Path, name: &str) -> Result<PathBuf> {
         .join(name))
 }
 
+/// 根据平台约定和环境变量确定 batch-git 用户状态根目录。
 fn state_root() -> Result<PathBuf> {
     if let Some(value) = env::var_os("BATCH_GIT_STATE_DIR") {
         return Ok(PathBuf::from(value));
@@ -1722,6 +1789,7 @@ fn state_root() -> Result<PathBuf> {
     }
 }
 
+/// 返回 systemd 用户单元目录。
 fn systemd_user_directory() -> Result<PathBuf> {
     if let Some(value) = env::var_os("XDG_CONFIG_HOME") {
         Ok(PathBuf::from(value).join("systemd/user"))
@@ -1730,10 +1798,12 @@ fn systemd_user_directory() -> Result<PathBuf> {
     }
 }
 
+/// 返回保存 Windows Task Scheduler XML 副本的目录。
 fn windows_task_directory() -> Result<PathBuf> {
     Ok(state_root()?.join("tasks/windows"))
 }
 
+/// 跨平台读取当前用户主目录，不猜测相对路径。
 fn home_directory() -> Result<PathBuf> {
     env::var_os("HOME")
         .or_else(|| env::var_os("USERPROFILE"))
@@ -1741,6 +1811,7 @@ fn home_directory() -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("HOME and USERPROFILE are not set"))
 }
 
+/// 只删除注册摘要中记录且通过安全校验的原生文件。
 fn remove_registered_files(state: &RegistrationState) -> Result<()> {
     for file in &state.files {
         let path = PathBuf::from(file);
@@ -1755,6 +1826,7 @@ fn remove_registered_files(state: &RegistrationState) -> Result<()> {
     Ok(())
 }
 
+/// 防止损坏状态文件引导程序操作其他工作区的任务。
 fn validate_state(root: &Path, name: &str, state: &RegistrationState) -> Result<()> {
     if state.workspace != root.display().to_string() || state.name != name {
         bail!("schedule registration state does not match this workspace and schedule");
@@ -1771,6 +1843,7 @@ fn validate_state(root: &Path, name: &str, state: &RegistrationState) -> Result<
     Ok(())
 }
 
+/// 计算指定任务在目标平台上允许写入的原生定义路径。
 fn native_paths(task_id: &str, platform: NativePlatform) -> Result<Vec<PathBuf>> {
     match platform {
         NativePlatform::Launchd => Ok(vec![
@@ -1791,6 +1864,7 @@ fn native_paths(task_id: &str, platform: NativePlatform) -> Result<Vec<PathBuf>>
     }
 }
 
+/// 检查磁盘文件是否逐字节等于当前声明生成的期望内容。
 fn artifact_files_match(artifact: &NativeArtifact) -> Result<bool> {
     for file in &artifact.files {
         match fs::read_to_string(&file.path) {
@@ -1801,6 +1875,7 @@ fn artifact_files_match(artifact: &NativeArtifact) -> Result<bool> {
     Ok(true)
 }
 
+/// 对影响注册行为的全部产物内容生成稳定摘要。
 fn artifact_digest(artifact: &NativeArtifact) -> String {
     let mut content = artifact.platform.label().to_owned();
     content.push_str(&artifact.task_id);
@@ -1811,6 +1886,7 @@ fn artifact_digest(artifact: &NativeArtifact) -> String {
     format!("{:016x}", fnv1a(content.as_bytes()))
 }
 
+/// 由工作区路径和计划名生成稳定且低碰撞的系统任务 ID。
 fn task_id(root: &Path, name: &str) -> String {
     format!(
         "com.batch-git.{:016x}.{}",
@@ -1819,6 +1895,7 @@ fn task_id(root: &Path, name: &str) -> String {
     )
 }
 
+/// 计算稳定的 FNV-1a 64 位散列；这里只用于标识而非安全用途。
 fn fnv1a(bytes: &[u8]) -> u64 {
     let mut hash = 0xcbf29ce484222325u64;
     for byte in bytes {
@@ -1828,6 +1905,7 @@ fn fnv1a(bytes: &[u8]) -> u64 {
     hash
 }
 
+/// 转义 plist 和 Task Scheduler XML 中的文本节点。
 fn xml_escape(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -1837,6 +1915,7 @@ fn xml_escape(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+/// 引用 systemd Environment/ExecStart 中的单个值。
 fn systemd_quote(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }

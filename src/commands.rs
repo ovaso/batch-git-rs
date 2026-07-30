@@ -30,6 +30,7 @@ use crate::settings;
 use crate::table;
 use crate::workspace::{self, WorkspaceLock};
 
+/// 解析公共运行配置，并把顶层子命令分派到对应工作流。
 pub fn dispatch(cli: Cli) -> Result<i32> {
     let jobs = settings::jobs(cli.jobs)?;
     match cli.command {
@@ -55,6 +56,7 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
     }
 }
 
+/// 将 `cd`、`cf` 两个便捷别名转换为标准 checkout 参数。
 fn checkout_alias_arguments(default: bool, feature: bool) -> CheckoutArgs {
     CheckoutArgs {
         create: false,
@@ -66,9 +68,11 @@ fn checkout_alias_arguments(default: bool, feature: bool) -> CheckoutArgs {
     }
 }
 
+/// 在所有已物化仓库中原样执行 `--` 后的 Git 参数。
 pub fn passthrough(args: Vec<OsString>, options: RuntimeOptions) -> Result<i32> {
     let jobs = settings::jobs(options.jobs)?;
     let root = workspace::find_root()?;
+    // 即使看似只读的 Git 子命令也可能修改仓库，因此透传统一获取工作区锁。
     let _lock = WorkspaceLock::acquire(&root)?;
     let workspace = workspace::read(&root)?;
     let verbose = options.verbose || settings::passthrough_verbose()?;
@@ -85,6 +89,7 @@ pub fn passthrough(args: Vec<OsString>, options: RuntimeOptions) -> Result<i32> 
     Ok(print_results(&results, verbose))
 }
 
+/// 在用户精确选择的仓库子集中执行原生 Git 命令。
 fn exec(arguments: ExecArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -143,6 +148,7 @@ fn exec(arguments: ExecArgs, jobs: usize, verbose: bool) -> Result<i32> {
     Ok(print_selected_results(&results, verbose))
 }
 
+/// 把 Git 子进程结果转换为统一的仓库级结果。
 fn passthrough_result(
     repository: &RepositoryRecord,
     args: &[OsString],
@@ -155,6 +161,7 @@ fn passthrough_result(
     }
 }
 
+/// 识别 `git commit` 的“没有内容可提交”，将其视为跳过而非批量失败。
 fn is_nothing_to_commit(args: &[OsString], output: &GitOutput) -> bool {
     if output.success || output.code != Some(1) || args.first().is_none_or(|arg| arg != "commit") {
         return false;
@@ -169,6 +176,7 @@ fn is_nothing_to_commit(args: &[OsString], output: &GitOutput) -> bool {
     .any(|marker| message.contains(marker))
 }
 
+/// 克隆单个仓库；只有 clone 和检查全部成功后才写入清单。
 fn clone_repository(arguments: CloneArgs) -> Result<i32> {
     let root = workspace::find_root_optional()?.unwrap_or(workspace::current_root()?);
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -199,6 +207,7 @@ fn clone_repository(arguments: CloneArgs) -> Result<i32> {
     {
         bail!("--depth must be at least 1");
     }
+    // clone 失败时清理本次新建目标，避免留下无法登记的半成品目录。
     if let Err(error) = git::clone_repository(
         &arguments.repository,
         &target,
@@ -242,6 +251,7 @@ fn clone_repository(arguments: CloneArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 扫描已有仓库并增量补充清单，不删除既有登记。
 fn scan(arguments: ScanArgs, jobs: usize) -> Result<i32> {
     let root = workspace::current_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -301,6 +311,7 @@ fn scan(arguments: ScanArgs, jobs: usize) -> Result<i32> {
     Ok(if failures == 0 { 0 } else { 1 })
 }
 
+/// 根据清单克隆所有缺失仓库，并同步声明的远端配置。
 fn restore(jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::current_root()?;
     if !root.join(WORKSPACE_FILE).is_file() {
@@ -326,6 +337,7 @@ fn restore(jobs: usize, verbose: bool) -> Result<i32> {
     Ok(crate::report::print_operation_summary(&results, verbose))
 }
 
+/// 恢复或验证单个仓库，返回可聚合结果而不影响其他仓库。
 fn restore_one(
     root: &Path,
     repository: &RepositoryRecord,
@@ -405,12 +417,14 @@ fn restore_one(
     result
 }
 
+/// clone/restore/fetch 共用的多仓库终端进度状态。
 struct OperationProgress {
     multi: Option<MultiProgress>,
     bars: Vec<(String, ProgressBar)>,
 }
 
 impl OperationProgress {
+    /// 仅在交互终端创建进度条；管道和 CI 中保持稳定表格输出。
     fn new(repositories: &[RepositoryRecord]) -> Self {
         if !io::stderr().is_terminal() {
             return Self {
@@ -460,6 +474,7 @@ impl OperationProgress {
     }
 }
 
+/// 更新可选进度条的阶段文本和位置。
 fn set_operation_status(progress: Option<&ProgressBar>, message: &'static str, position: u64) {
     if let Some(progress) = progress {
         progress.set_position(position);
@@ -467,6 +482,7 @@ fn set_operation_status(progress: Option<&ProgressBar>, message: &'static str, p
     }
 }
 
+/// 用仓库最终状态结束进度条。
 fn finish_operation(progress: Option<&ProgressBar>, result: &RepositoryResult) {
     if let Some(progress) = progress {
         progress.set_position(100);
@@ -474,6 +490,7 @@ fn finish_operation(progress: Option<&ProgressBar>, result: &RepositoryResult) {
     }
 }
 
+/// 对所有已物化仓库执行 fetch/prune，不改变工作树。
 fn fetch(jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -518,6 +535,7 @@ fn fetch(jobs: usize, verbose: bool) -> Result<i32> {
     Ok(crate::report::print_operation_summary(&results, verbose))
 }
 
+/// 解析用户选择后执行可供无人值守使用的 restore + fetch。
 fn sync(arguments: SyncArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -531,6 +549,7 @@ fn sync(arguments: SyncArgs, jobs: usize, verbose: bool) -> Result<i32> {
     run_sync(&root, &mut manifest, &records, jobs, verbose)
 }
 
+/// 执行已确定范围的同步；供命令行和 schedule 共用。
 pub(crate) fn run_sync(
     root: &Path,
     manifest: &mut Workspace,
@@ -589,6 +608,7 @@ pub(crate) fn run_sync(
     Ok(crate::report::print_operation_summary(&results, verbose))
 }
 
+/// 解析用户选择后执行安全的 fast-forward-only pull。
 fn pull(arguments: SyncArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -602,6 +622,7 @@ fn pull(arguments: SyncArgs, jobs: usize, verbose: bool) -> Result<i32> {
     run_pull(&root, &mut manifest, &records, jobs, verbose)
 }
 
+/// 对选中仓库检查工作树、分支和 upstream 后执行 fast-forward pull。
 pub(crate) fn run_pull(
     root: &Path,
     manifest: &mut Workspace,
@@ -662,6 +683,7 @@ pub(crate) fn run_pull(
     Ok(crate::report::print_operation_summary(&results, verbose))
 }
 
+/// 推送各仓库当前分支，默认不创建远端分支且永不 force push。
 fn push(arguments: PushArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -769,6 +791,7 @@ fn push(arguments: PushArgs, jobs: usize, verbose: bool) -> Result<i32> {
     Ok(print_push_summary(&results, verbose))
 }
 
+/// 按已有 upstream 配置推送，先拒绝分叉等不安全状态。
 fn push_existing_upstream(
     repository: &RepositoryRecord,
     path: &Path,
@@ -795,6 +818,7 @@ fn push_existing_upstream(
     }
 }
 
+/// 在各仓库解析并安全切换目标分支，缺少分支时允许正常跳过。
 fn checkout(arguments: CheckoutArgs, jobs: usize, _verbose: bool) -> Result<i32> {
     let current_feature_branch = settings::current_feature_branch()?;
     let feature_branch = if arguments.feature {
@@ -905,6 +929,7 @@ fn checkout(arguments: CheckoutArgs, jobs: usize, _verbose: bool) -> Result<i32>
     ))
 }
 
+/// 将指定源分支合入每个仓库当前分支，可选先快进当前分支。
 fn merge(arguments: MergeArgs, jobs: usize, verbose: bool) -> Result<i32> {
     let feature_branch = if arguments.feature {
         match settings::current_feature_branch()? {
@@ -1012,6 +1037,7 @@ fn merge(arguments: MergeArgs, jobs: usize, verbose: bool) -> Result<i32> {
     Ok(print_selected_results(&results, verbose))
 }
 
+/// 列出登记仓库及其实时当前分支，支持稳定 JSON 输出。
 fn list(arguments: ListArgs, jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -1070,6 +1096,7 @@ fn list(arguments: ListArgs, jobs: usize) -> Result<i32> {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+/// 工作区状态表中比 Git 原始状态更高层的分类。
 enum WorkspaceStatusKind {
     Clean,
     Dirty,
@@ -1112,6 +1139,7 @@ impl WorkspaceStatusKind {
     }
 }
 
+/// 一个仓库在 status 表格中的完整行模型。
 struct WorkspaceStatusRow {
     repository: String,
     branch: String,
@@ -1122,6 +1150,7 @@ struct WorkspaceStatusRow {
     changed_paths: usize,
 }
 
+/// 并行读取所有仓库状态，并按清单顺序输出紧凑摘要。
 fn status(jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -1244,6 +1273,7 @@ fn status(jobs: usize) -> Result<i32> {
     ))
 }
 
+/// 在已有本地引用中搜索分支，不隐式访问网络。
 fn find(arguments: FindArgs, jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -1372,6 +1402,7 @@ fn find(arguments: FindArgs, jobs: usize) -> Result<i32> {
     Ok(i32::from(unavailable > 0))
 }
 
+/// 展示工作区整体或单仓库的清单与实时 Git 元数据。
 fn info(arguments: InfoArgs, jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -1489,6 +1520,7 @@ fn info(arguments: InfoArgs, jobs: usize) -> Result<i32> {
     ))
 }
 
+/// 以人类可读格式打印单仓库详情。
 fn print_repository_info(output: &RepositoryInfoOutput, feature_branch: Option<&str>) {
     let branches = match (output.local_branches, output.remote_branches) {
         (Some(local), Some(remote)) => format!("{local} local, {remote} remote"),
@@ -1543,6 +1575,7 @@ fn print_repository_info(output: &RepositoryInfoOutput, feature_branch: Option<&
     }
 }
 
+/// 根据仓库可用性为状态文本着色。
 fn color_runtime_state(state: &str) -> String {
     match state {
         "available" => color::green(state),
@@ -1551,6 +1584,7 @@ fn color_runtime_state(state: &str) -> String {
     }
 }
 
+/// 命令模块的兼容包装，实际匹配规则由 selector 统一实现。
 fn wildcard_matches(pattern: &str, value: &str) -> bool {
     let pattern = pattern.chars().collect::<Vec<_>>();
     let value = value.chars().collect::<Vec<_>>();
@@ -1573,6 +1607,7 @@ fn wildcard_matches(pattern: &str, value: &str) -> bool {
     previous[value.len()]
 }
 
+/// 快速展示每个仓库当前分支，不读取远端或工作树状态。
 fn branch(jobs: usize) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
@@ -1603,6 +1638,7 @@ fn branch(jobs: usize) -> Result<i32> {
     Ok(0)
 }
 
+/// 只从清单移除登记，绝不删除仓库目录和 Git 数据。
 fn forget(arguments: ForgetArgs) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
@@ -1645,6 +1681,7 @@ fn forget(arguments: ForgetArgs) -> Result<i32> {
     Ok(0)
 }
 
+/// 从 URL 或路径末段推导默认 clone 目录，并移除 `.git` 后缀。
 fn default_clone_directory(repository: &str) -> String {
     let trimmed = repository.trim_end_matches('/').trim_end_matches(".git");
     trimmed
@@ -1655,6 +1692,7 @@ fn default_clone_directory(repository: &str) -> String {
         .to_owned()
 }
 
+/// 将工作区相对路径转换为清单使用的正斜杠字符串。
 fn relative_string(path: &Path) -> Result<String> {
     if path.is_absolute() {
         bail!("directory must be relative to the workspace");
@@ -1666,6 +1704,7 @@ fn relative_string(path: &Path) -> Result<String> {
     Ok(parts.join("/"))
 }
 
+/// 在仓库名冲突时使用目录信息生成稳定、唯一的登记名称。
 fn unique_name(base: &str, directory: &str, repositories: &[RepositoryRecord]) -> String {
     let used: HashSet<&str> = repositories
         .iter()

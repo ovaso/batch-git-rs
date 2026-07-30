@@ -14,6 +14,7 @@ use url::Url;
 
 use crate::model::{RemoteRecord, RepositoryRecord};
 
+/// 可能把子进程重定向到调用方仓库的 Git 环境变量。
 const ROUTING_ENVIRONMENT: &[&str] = &[
     "GIT_DIR",
     "GIT_WORK_TREE",
@@ -29,6 +30,7 @@ const ROUTING_ENVIRONMENT: &[&str] = &[
     "GIT_IMPLICIT_WORK_TREE",
 ];
 
+/// 系统 Git 子进程的完整、可聚合执行结果。
 #[derive(Debug)]
 pub struct GitOutput {
     pub success: bool,
@@ -37,6 +39,7 @@ pub struct GitOutput {
     pub stderr: String,
 }
 
+/// 扫描仓库时写入清单的稳定 Git 元数据。
 #[derive(Debug)]
 pub struct RepositoryInfo {
     pub default_branch: String,
@@ -44,6 +47,7 @@ pub struct RepositoryInfo {
     pub remotes: Vec<RemoteRecord>,
 }
 
+/// 清单仓库在本地文件系统中的实时状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryRuntimeState {
     Available,
@@ -54,6 +58,7 @@ pub enum RepositoryRuntimeState {
 }
 
 impl RepositoryRuntimeState {
+    /// 返回适合表格和 JSON 输出的稳定标识。
     pub fn label(self) -> &'static str {
         match self {
             Self::Available => "available",
@@ -65,6 +70,7 @@ impl RepositoryRuntimeState {
     }
 }
 
+/// 不访问网络即可取得的仓库运行时摘要。
 #[derive(Debug)]
 pub struct RepositoryRuntimeInfo {
     pub state: RepositoryRuntimeState,
@@ -74,6 +80,7 @@ pub struct RepositoryRuntimeInfo {
     pub remote_branches: Option<usize>,
 }
 
+/// 分支来自本地引用还是 remote-tracking 引用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BranchKind {
     Local,
@@ -81,6 +88,7 @@ pub enum BranchKind {
 }
 
 impl BranchKind {
+    /// 返回稳定的机器可读类别名。
     pub fn label(self) -> &'static str {
         match self {
             Self::Local => "local",
@@ -89,6 +97,7 @@ impl BranchKind {
     }
 }
 
+/// 用于 find/list 输出的单个分支摘要。
 #[derive(Debug)]
 pub struct BranchSummary {
     pub name: String,
@@ -100,6 +109,7 @@ pub struct BranchSummary {
     pub commit_time: i64,
 }
 
+/// checkout 名称解析后的确定目标或歧义状态。
 #[derive(Debug)]
 pub enum CheckoutTarget {
     Local,
@@ -108,6 +118,7 @@ pub enum CheckoutTarget {
     Ambiguous(Vec<String>),
 }
 
+/// 映射到系统 `git clone` 的受控选项。
 pub struct CloneOptions<'a> {
     pub remote_name: &'a str,
     pub branch: Option<&'a str>,
@@ -117,8 +128,10 @@ pub struct CloneOptions<'a> {
     pub allow_stdin: bool,
 }
 
+/// clone 进度回调，参数分别为已完成对象数和总对象数。
 pub type CloneProgress = Arc<dyn Fn(usize, usize) + Send + Sync>;
 
+/// 按 Git 状态类别聚合的工作树变更数量。
 #[derive(Debug, Default)]
 pub struct ChangeCounts {
     pub modified: usize,
@@ -130,10 +143,12 @@ pub struct ChangeCounts {
 }
 
 impl ChangeCounts {
+    /// 返回所有状态类别的总变更数。
     pub fn total(&self) -> usize {
         self.modified + self.added + self.deleted + self.renamed + self.untracked + self.conflicted
     }
 
+    /// 生成类似 `M2 ?1` 的紧凑人类可读文本。
     pub fn compact(&self) -> String {
         let values = [
             ("M", self.modified),
@@ -155,6 +170,7 @@ impl ChangeCounts {
     }
 }
 
+/// 当前分支相对 upstream 的提交关系。
 #[derive(Debug)]
 pub enum UpstreamSummary {
     UpToDate,
@@ -165,6 +181,7 @@ pub enum UpstreamSummary {
 }
 
 impl UpstreamSummary {
+    /// 生成人类可读的 ahead/behind 摘要。
     pub fn label(&self) -> String {
         match self {
             Self::UpToDate => "up-to-date".to_owned(),
@@ -176,6 +193,7 @@ impl UpstreamSummary {
     }
 }
 
+/// `status` 命令所需的仓库级汇总。
 #[derive(Debug)]
 pub struct RepositoryStatusSummary {
     pub branch: String,
@@ -183,6 +201,7 @@ pub struct RepositoryStatusSummary {
     pub upstream: UpstreamSummary,
 }
 
+/// 在指定仓库运行系统 Git，并根据托管模式隔离调用方的路由环境变量。
 pub fn run<I, S>(directory: &Path, args: I, managed: bool, allow_stdin: bool) -> Result<GitOutput>
 where
     I: IntoIterator<Item = S>,
@@ -194,6 +213,7 @@ where
         command.env("TZ", timezone);
     }
     if managed {
+        // batch-git 自己构造的操作必须针对传入目录，不能继承外层 Git 的仓库定位。
         command.env_remove("GIT_CONFIG_COUNT");
         for variable in ROUTING_ENVIRONMENT {
             command.env_remove(variable);
@@ -203,6 +223,7 @@ where
         command.stdin(Stdio::null());
     }
     if allow_stdin && !managed && terminal_is_interactive() {
+        // 单任务交互透传直接继承终端，支持编辑器、密码提示和 rebase -i。
         let status = command
             .status()
             .with_context(|| format!("failed to execute Git in {}", directory.display()))?;
@@ -227,10 +248,12 @@ where
     })
 }
 
+/// 只有三个标准流都连接终端时才安全进入完全交互模式。
 fn terminal_is_interactive() -> bool {
     io::stdin().is_terminal() && io::stdout().is_terminal() && io::stderr().is_terminal()
 }
 
+/// 接受不可假定为 UTF-8 的原始参数并调用通用 Git 执行器。
 pub fn run_os(
     directory: &Path,
     args: &[OsString],
@@ -240,6 +263,7 @@ pub fn run_os(
     run(directory, args, managed, allow_stdin)
 }
 
+/// 使用系统 Git 克隆仓库，以继承用户的认证、代理和 credential helper 配置。
 pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> Result<()> {
     let mut command = Command::new("git");
     command.arg("clone").args(["--origin", options.remote_name]);
@@ -313,6 +337,7 @@ pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> 
     Ok(())
 }
 
+/// 从 Git stderr 进度行中提取“当前/总数”，无法识别时返回 None。
 fn clone_progress_counts(message: &[u8]) -> Option<(usize, usize)> {
     let message = String::from_utf8_lossy(message);
     let counters = message.rsplit_once('(')?.1.strip_suffix(')')?;
@@ -320,10 +345,12 @@ fn clone_progress_counts(message: &[u8]) -> Option<(usize, usize)> {
     Some((received.trim().parse().ok()?, total.trim().parse().ok()?))
 }
 
+/// fetch 所有远端并清理已删除的 remote-tracking 引用。
 pub fn fetch_all(path: &Path, allow_stdin: bool) -> Result<GitOutput> {
     run(path, ["fetch", "--all", "--prune"], true, allow_stdin)
 }
 
+/// 安全切换到已经存在的本地分支。
 pub fn checkout_local(path: &Path, branch_name: &str) -> Result<()> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -344,6 +371,7 @@ pub fn checkout_local(path: &Path, branch_name: &str) -> Result<()> {
         .with_context(|| format!("failed to set HEAD to {branch_name}"))
 }
 
+/// 从远端引用创建同名 tracking 分支并切换过去。
 pub fn checkout_remote(path: &Path, branch_name: &str, remote_branch: &str) -> Result<()> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -372,6 +400,7 @@ pub fn checkout_remote(path: &Path, branch_name: &str, remote_branch: &str) -> R
         .with_context(|| format!("failed to set HEAD to {branch_name}"))
 }
 
+/// 从显式或隐式起点创建新本地分支并安全 checkout。
 pub fn create_and_checkout_branch(
     path: &Path,
     branch_name: &str,
@@ -424,6 +453,7 @@ pub fn create_and_checkout_branch(
         .with_context(|| format!("failed to set HEAD to {branch_name}"))
 }
 
+/// 将分支、远端分支、tag 或提交名解析为创建分支的 commit。
 fn resolve_create_start_point<'repo>(
     repository: &'repo Repository,
     start: &str,
@@ -475,6 +505,7 @@ fn resolve_create_start_point<'repo>(
     }
 }
 
+/// 搜索所有远端的同名分支，并保留歧义供调用方提示用户。
 fn checkout_target_from_remotes(repository: &Repository, branch: &str) -> Result<CheckoutTarget> {
     let mut matches = Vec::new();
     for branch_result in repository
@@ -504,6 +535,7 @@ fn checkout_target_from_remotes(repository: &Repository, branch: &str) -> Result
     })
 }
 
+/// 读取仓库默认分支、主要远端和可移植远端地址。
 pub fn inspect(path: &Path) -> Result<RepositoryInfo> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -545,12 +577,14 @@ pub fn inspect(path: &Path) -> Result<RepositoryInfo> {
     })
 }
 
+/// 快速判断路径是否为可打开的非裸 Git 工作树。
 pub fn is_repository(path: &Path) -> bool {
     Repository::open(path)
         .map(|repository| !repository.is_bare())
         .unwrap_or(false)
 }
 
+/// 返回当前分支名；detached HEAD 时返回短提交 ID。
 pub fn current_branch_summary(path: &Path) -> Result<String> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -571,6 +605,7 @@ pub fn current_branch_summary(path: &Path) -> Result<String> {
     Ok(format!("(detached:{short_id})"))
 }
 
+/// 容错收集仓库状态；异常被编码进状态而不是中断整个工作区。
 pub fn repository_runtime_info(path: &Path) -> RepositoryRuntimeInfo {
     if !path.exists() {
         return unavailable_runtime(RepositoryRuntimeState::Missing);
@@ -621,6 +656,7 @@ pub fn repository_runtime_info(path: &Path) -> RepositoryRuntimeInfo {
     }
 }
 
+/// 构造无法读取 Git 细节时的统一空摘要。
 fn unavailable_runtime(state: RepositoryRuntimeState) -> RepositoryRuntimeInfo {
     RepositoryRuntimeInfo {
         state,
@@ -631,6 +667,7 @@ fn unavailable_runtime(state: RepositoryRuntimeState) -> RepositoryRuntimeInfo {
     }
 }
 
+/// 统计指定类型分支；遍历失败时返回 None 表示数据不可用。
 fn branch_count(repository: &Repository, branch_type: BranchType) -> Option<usize> {
     let branches = repository.branches(Some(branch_type)).ok()?;
     let mut count = 0;
@@ -644,6 +681,7 @@ fn branch_count(repository: &Repository, branch_type: BranchType) -> Option<usiz
     Some(count)
 }
 
+/// 收集本地和/或远端分支，并附带提交信息供搜索排序。
 pub fn branches(
     path: &Path,
     include_local: bool,
@@ -685,6 +723,7 @@ pub fn branches(
     Ok(summaries)
 }
 
+/// 将 git2 分支迭代器转换为稳定的业务摘要。
 fn collect_branches(
     repository: &Repository,
     branch_type: BranchType,
@@ -735,6 +774,7 @@ fn collect_branches(
     Ok(())
 }
 
+/// 汇总工作树变更与本地引用计算出的 upstream 差异。
 pub fn status_summary(path: &Path) -> Result<RepositoryStatusSummary> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -778,6 +818,7 @@ pub fn status_summary(path: &Path) -> Result<RepositoryStatusSummary> {
     })
 }
 
+/// 通过 merge-base 图关系计算 ahead/behind，不访问网络。
 fn upstream_summary(repository: &Repository) -> Result<UpstreamSummary> {
     let head = match repository.head() {
         Ok(head) => head,
@@ -819,6 +860,7 @@ fn upstream_summary(repository: &Repository) -> Result<UpstreamSummary> {
     })
 }
 
+/// 解析当前分支配置的 push 远端和目标引用。
 pub fn upstream_push_target(path: &Path, branch: &str) -> Result<Option<(String, String)>> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -844,6 +886,7 @@ pub fn upstream_push_target(path: &Path, branch: &str) -> Result<Option<(String,
     Ok(Some((remote, merge_ref)))
 }
 
+/// 按“本地优先、显式远端其次、全远端搜索最后”的规则解析 checkout。
 pub fn checkout_target(path: &Path, branch: &str, remote: Option<&str>) -> Result<CheckoutTarget> {
     let full_name = format!("refs/heads/{branch}");
     if !git2::Reference::is_valid_name(&full_name) {
@@ -884,6 +927,7 @@ pub fn checkout_target(path: &Path, branch: &str, remote: Option<&str>) -> Resul
     })
 }
 
+/// 读取远端 fetch URL，并移除 HTTP(S) 凭据后返回。
 fn remote_url(path: &Path, remote_name: &str) -> Result<Option<String>> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
@@ -894,6 +938,7 @@ fn remote_url(path: &Path, remote_name: &str) -> Result<Option<String>> {
     }
 }
 
+/// 只验证本地远端配置是否与清单一致，不进行修改。
 pub fn verify_declared_remotes(path: &Path, repository: &RepositoryRecord) -> Result<()> {
     for remote in &repository.remotes {
         match remote_url(path, &remote.name)? {
@@ -910,6 +955,7 @@ pub fn verify_declared_remotes(path: &Path, repository: &RepositoryRecord) -> Re
     Ok(())
 }
 
+/// 让本地 remote 配置收敛到清单声明，包括清除遗留 push URL。
 pub fn configure_declared_remotes(
     path: &Path,
     repository: &RepositoryRecord,
@@ -956,6 +1002,7 @@ pub fn configure_declared_remotes(
     Ok(())
 }
 
+/// 在给定深度内发现 Git 工作树，并返回稳定排序的路径。
 pub fn discover(root: &Path, max_depth: usize) -> Result<Vec<PathBuf>> {
     if max_depth == 0 {
         bail!("scan depth must be at least 1");
@@ -967,6 +1014,7 @@ pub fn discover(root: &Path, max_depth: usize) -> Result<Vec<PathBuf>> {
     Ok(repositories)
 }
 
+/// 深度优先扫描目录；发现仓库后不再进入其内部继续搜索。
 fn discover_below(
     root: &Path,
     directory: &Path,
@@ -999,6 +1047,7 @@ fn discover_below(
     Ok(())
 }
 
+/// 优先读取远端 HEAD，再回退到常见分支名和当前分支。
 fn detect_default_branch(repository: &Repository, primary_remote: &str) -> String {
     let remote_head = format!("refs/remotes/{primary_remote}/HEAD");
     if let Ok(reference) = repository.find_reference(&remote_head)
@@ -1024,6 +1073,7 @@ fn detect_default_branch(repository: &Repository, primary_remote: &str) -> Strin
     "main".to_owned()
 }
 
+/// 将本地路径尽量转换为可复制的绝对 file URL 或规范文本。
 fn portable_remote_url(raw: &str) -> String {
     let Ok(mut parsed) = Url::parse(raw) else {
         return raw.to_owned();
@@ -1037,6 +1087,7 @@ fn portable_remote_url(raw: &str) -> String {
     parsed.to_string()
 }
 
+/// 移除 HTTP(S) URL 中可能包含的用户名、密码或 token。
 pub fn display_remote_url(raw: &str) -> String {
     portable_remote_url(raw)
 }

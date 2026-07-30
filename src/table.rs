@@ -2,8 +2,10 @@
 
 use unicode_width::UnicodeWidthStr;
 
+/// 相邻列之间固定保留两个空格。
 const COLUMN_GAP: usize = 2;
 
+/// 把表头和数据行渲染成 Unicode 宽度正确的左对齐表格。
 pub(crate) fn render(headers: &[&str], rows: &[Vec<String>]) -> String {
     let headers = headers
         .iter()
@@ -17,6 +19,7 @@ pub(crate) fn render(headers: &[&str], rows: &[Vec<String>]) -> String {
                 .collect::<Vec<_>>()
         })
         .collect::<Vec<_>>();
+    // 宽度使用终端可见字符计算，不能直接使用 UTF-8 字节数。
     let mut widths = headers
         .iter()
         .map(|header| visible_width(header))
@@ -39,6 +42,7 @@ pub(crate) fn render(headers: &[&str], rows: &[Vec<String>]) -> String {
     output
 }
 
+/// 转义不可信控制字符，同时保留本程序自己生成的颜色序列。
 fn sanitize_cell(value: &str) -> String {
     let mut characters = value.chars().peekable();
     let mut output = String::new();
@@ -81,6 +85,7 @@ fn sanitize_cell(value: &str) -> String {
     output
 }
 
+/// 去除 ANSI 序列后计算字符串在终端中占用的列数。
 fn visible_width(value: &str) -> usize {
     let mut plain = String::with_capacity(value.len());
     let mut characters = value.chars().peekable();
@@ -99,6 +104,7 @@ fn visible_width(value: &str) -> usize {
     UnicodeWidthStr::width(plain.as_str())
 }
 
+/// 按预先计算的宽度写入一行，并在列间补齐空格。
 fn push_row<'a, I>(output: &mut String, values: I, widths: &[usize])
 where
     I: IntoIterator<Item = &'a str>,

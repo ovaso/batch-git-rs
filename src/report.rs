@@ -9,6 +9,7 @@ use crate::git::GitOutput;
 use crate::model::RepositoryRecord;
 use crate::{color, table};
 
+/// 单仓库操作的三态结果；跳过不等同于失败。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ResultKind {
     Success,
@@ -17,6 +18,7 @@ pub(crate) enum ResultKind {
 }
 
 impl ResultKind {
+    /// 返回稳定、无颜色的短标签。
     fn label(self) -> &'static str {
         match self {
             Self::Success => "ok",
@@ -25,6 +27,7 @@ impl ResultKind {
         }
     }
 
+    /// 为表格输出生成语义化颜色标签。
     fn colored_label(self) -> String {
         match self {
             Self::Success => color::green(self.label()),
@@ -33,6 +36,7 @@ impl ResultKind {
         }
     }
 
+    /// 为详细输出块选择 Unicode 或 ASCII 标记。
     fn block_label(self, unicode: bool) -> &'static str {
         match (self, unicode) {
             (Self::Success, true) => "✓ ok",
@@ -53,6 +57,7 @@ impl ResultKind {
     }
 }
 
+/// 一个仓库的业务结果、子进程输出和清单更新时间信息。
 #[derive(Debug)]
 pub(crate) struct RepositoryResult {
     name: String,
@@ -66,6 +71,7 @@ pub(crate) struct RepositoryResult {
 }
 
 impl RepositoryResult {
+    /// 构造成功结果，并可标记该仓库已经完成远端同步。
     pub(crate) fn success(
         repository: &RepositoryRecord,
         detail: impl Into<String>,
@@ -76,14 +82,17 @@ impl RepositoryResult {
         result
     }
 
+    /// 构造预期内跳过结果。
     pub(crate) fn skipped(repository: &RepositoryRecord, detail: impl Into<String>) -> Self {
         Self::plain(repository, ResultKind::Skipped, detail)
     }
 
+    /// 构造没有子进程输出的失败结果。
     pub(crate) fn failed(repository: &RepositoryRecord, detail: impl Into<String>) -> Self {
         Self::plain(repository, ResultKind::Failed, detail)
     }
 
+    /// 保留 Git 输出但把特定非零结果归类为跳过。
     pub(crate) fn skipped_from_git(
         repository: &RepositoryRecord,
         detail: impl Into<String>,
@@ -101,6 +110,7 @@ impl RepositoryResult {
         }
     }
 
+    /// 按 Git 退出状态构造成功或失败结果。
     pub(crate) fn from_git(
         repository: &RepositoryRecord,
         output: GitOutput,
@@ -129,14 +139,17 @@ impl RepositoryResult {
         }
     }
 
+    /// 判断调用方是否应更新清单中的 `synced_at`。
     pub(crate) fn was_synced(&self) -> bool {
         self.synced
     }
 
+    /// 判断该结果是否应让聚合退出码变为 1。
     pub(crate) fn is_failed(&self) -> bool {
         self.kind == ResultKind::Failed
     }
 
+    /// 生成进度条结束时显示的短状态。
     pub(crate) fn progress_label(&self) -> String {
         match self.kind {
             ResultKind::Success => color::green("done"),
@@ -145,6 +158,7 @@ impl RepositoryResult {
         }
     }
 
+    /// 构造不带 Git stdout/stderr 的基础结果。
     fn plain(repository: &RepositoryRecord, kind: ResultKind, detail: impl Into<String>) -> Self {
         Self {
             name: repository.name.clone(),
@@ -159,6 +173,7 @@ impl RepositoryResult {
     }
 }
 
+/// 打印 clone/restore/fetch 风格摘要，并返回聚合退出码。
 pub(crate) fn print_operation_summary(results: &[RepositoryResult], verbose: bool) -> i32 {
     let rows = results
         .iter()
@@ -187,14 +202,17 @@ pub(crate) fn print_operation_summary(results: &[RepositoryResult], verbose: boo
     print_summary(results)
 }
 
+/// 打印用户选中仓库的通用结果。
 pub(crate) fn print_selected_results(results: &[RepositoryResult], verbose: bool) -> i32 {
     print_selected_results_with_comments(results, verbose, false)
 }
 
+/// 打印 push 结果，并显示“无 upstream”等跳过原因。
 pub(crate) fn print_push_summary(results: &[RepositoryResult], verbose: bool) -> i32 {
     print_selected_results_with_comments(results, verbose, true)
 }
 
+/// 实现选中仓库结果表，并按策略附加详细输出块。
 fn print_selected_results_with_comments(
     results: &[RepositoryResult],
     verbose: bool,
@@ -232,6 +250,7 @@ fn print_selected_results_with_comments(
     print_summary(results)
 }
 
+/// 打印全工作区 Git 透传结果，成功输出默认可见。
 pub(crate) fn print_results(results: &[RepositoryResult], verbose: bool) -> i32 {
     let style = OutputBlockStyle::detect();
     let visible_output = results
@@ -269,6 +288,7 @@ pub(crate) fn print_results(results: &[RepositoryResult], verbose: bool) -> i32 
     print_summary(results)
 }
 
+/// 输出成功/跳过/失败计数，并据此返回 0 或 1。
 pub(crate) fn print_summary(results: &[RepositoryResult]) -> i32 {
     let mut succeeded = 0;
     let mut skipped = 0;
@@ -291,6 +311,7 @@ pub(crate) fn print_summary(results: &[RepositoryResult]) -> i32 {
     i32::from(failed > 0)
 }
 
+/// 输出 checkout 专用摘要，把预期缺失分支的跳过计入成功退出。
 pub(crate) fn print_checkout_summary(
     results: &[RepositoryResult],
     branches: &[String],
@@ -327,6 +348,7 @@ pub(crate) fn print_checkout_summary(
     print_summary(results)
 }
 
+/// 依次打印非空 stdout 和 stderr，并保留二者来源。
 fn print_child_output(stdout: &str, stderr: &str, style: OutputBlockStyle) {
     if !stdout.is_empty() {
         print!("{stdout}");
@@ -348,6 +370,7 @@ fn print_child_output(stdout: &str, stderr: &str, style: OutputBlockStyle) {
     }
 }
 
+/// 为单仓库子进程输出添加可扫描的标题、边框和退出码说明。
 fn print_child_output_block(
     outcome: &RepositoryResult,
     style: OutputBlockStyle,
@@ -365,6 +388,7 @@ fn print_child_output_block(
     println!("{}", style.footer());
 }
 
+/// 生成详细输出块右侧的状态说明。
 fn output_block_note(
     outcome: &RepositoryResult,
     show_detail: bool,
@@ -387,12 +411,14 @@ fn output_block_note(
 }
 
 #[derive(Clone, Copy)]
+/// 根据终端能力选择字符集和输出宽度。
 struct OutputBlockStyle {
     unicode: bool,
     width: usize,
 }
 
 impl OutputBlockStyle {
+    /// 检测终端是否支持 Unicode，并限制超宽输出。
     fn detect() -> Self {
         let unicode =
             io::stdout().is_terminal() && std::env::var("TERM").is_ok_and(|term| term != "dumb");
@@ -480,6 +506,7 @@ impl OutputBlockStyle {
     }
 }
 
+/// 在已着色标题后补齐横线，同时按无 ANSI 文本计算宽度。
 fn pad_rule(plain: &str, rendered: String, fill: char, width: usize) -> String {
     let padding = width.saturating_sub(UnicodeWidthStr::width(plain));
     format!("{rendered}{}", fill.to_string().repeat(padding))

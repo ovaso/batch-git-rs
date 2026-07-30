@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use anyhow::{Context, Result, bail};
 
+/// 已展开为离散取值集合的六段式 cron 表达式。
 #[derive(Debug, Clone)]
 pub(crate) struct CronExpression {
     second: CronField,
@@ -14,12 +15,14 @@ pub(crate) struct CronExpression {
     day_of_week: CronField,
 }
 
+/// 单个 cron 字段的有序值集合及“未限制”标志。
 #[derive(Debug, Clone)]
 pub(crate) struct CronField {
     values: Vec<u8>,
     unrestricted: bool,
 }
 
+/// 字段类别决定有效范围、名称别名和星期归一化规则。
 #[derive(Debug, Clone, Copy)]
 enum FieldKind {
     Second,
@@ -31,6 +34,7 @@ enum FieldKind {
 }
 
 impl CronExpression {
+    /// 解析六段式表达式，并拒绝原生调度器无法一致表达的日期语义。
     pub(crate) fn parse(expression: &str) -> Result<Self> {
         let parts = expression.split_whitespace().collect::<Vec<_>>();
         if parts.len() != 6 {
@@ -51,6 +55,7 @@ impl CronExpression {
             day_of_week: CronField::parse(parts[5], FieldKind::DayOfWeek)
                 .context("invalid cron day-of-week field")?,
         };
+        // Unix cron 对“日”和“周”使用 OR，但部分原生平台使用 AND，故禁止同时限制。
         if !parsed.day_of_month.unrestricted && !parsed.day_of_week.unrestricted {
             bail!(
                 "cron cannot restrict both day-of-month and day-of-week because native schedulers do not preserve Unix cron OR semantics"
@@ -109,11 +114,13 @@ impl CronExpression {
 }
 
 impl CronField {
+    /// 展开列表、范围、步长、通配符和名称别名为稳定有序的数值集合。
     fn parse(expression: &str, kind: FieldKind) -> Result<Self> {
         if expression.is_empty() {
             bail!("field cannot be empty");
         }
         let (minimum, maximum) = kind.bounds();
+        // BTreeSet 同时完成去重和排序，方便后续生成平台配置。
         let mut values = BTreeSet::new();
         for item in expression.split(',') {
             if item.is_empty() {
@@ -176,6 +183,7 @@ impl CronField {
 }
 
 impl FieldKind {
+    /// 返回当前字段允许的闭区间。
     fn bounds(self) -> (u8, u8) {
         match self {
             Self::Second | Self::Minute => (0, 59),
@@ -186,6 +194,7 @@ impl FieldKind {
         }
     }
 
+    /// 返回字段覆盖全范围时应包含的不同取值数。
     fn value_count(self) -> usize {
         match self {
             Self::Second | Self::Minute => 60,
@@ -196,6 +205,7 @@ impl FieldKind {
         }
     }
 
+    /// 解析数字或月份、星期英文缩写，并检查范围。
     fn parse_value(self, raw: &str) -> Result<u8> {
         let upper = raw.to_ascii_uppercase();
         let named = match self {
@@ -239,6 +249,7 @@ impl FieldKind {
         Ok(value)
     }
 
+    /// 把星期日的别名 `7` 归一化为 `0`，便于去重和跨平台生成。
     fn normalize(self, value: u8) -> u8 {
         if matches!(self, Self::DayOfWeek) && value == 7 {
             0

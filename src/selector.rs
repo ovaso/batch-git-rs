@@ -6,6 +6,7 @@ use anyhow::{Result, bail};
 
 use crate::model::{RepositoryRecord, Workspace};
 
+/// 按名称、目录或 `*` 模式选择仓库，并按清单顺序去重。
 pub(crate) fn select(
     workspace: &Workspace,
     selectors: &[String],
@@ -19,6 +20,7 @@ pub(crate) fn select(
         return Ok(workspace.repositories.clone());
     }
 
+    // 保存清单索引而非对象本身，可同时完成去重和稳定顺序恢复。
     let mut selected = HashSet::new();
     for selector in selectors {
         let matches = workspace
@@ -53,6 +55,7 @@ pub(crate) fn select(
         selected.extend(matches);
     }
 
+    // 最后按原清单过滤，避免并发输出顺序受选择参数顺序影响。
     Ok(workspace
         .repositories
         .iter()
@@ -61,10 +64,12 @@ pub(crate) fn select(
         .collect())
 }
 
+/// 匹配只把 `*` 当作元字符的轻量通配模式。
 pub(crate) fn wildcard_matches(pattern: &str, value: &str) -> bool {
     let pattern = pattern.as_bytes();
     let value = value.as_bytes();
     let (mut pattern_index, mut value_index) = (0, 0);
+    // 记录最近一个星号；后续失配时让它多吞一个字节并重新尝试。
     let (mut star, mut retry_value) = (None, 0);
     while value_index < value.len() {
         if pattern_index < pattern.len() && pattern[pattern_index] == value[value_index] {
