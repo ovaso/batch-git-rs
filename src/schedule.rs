@@ -8,8 +8,10 @@ use std::process::{Command, Stdio};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use tempfile::NamedTempFile;
 
+use crate::automation::{self, AutomationOptions};
 use crate::cli::{
     ScheduleActionValue, ScheduleAddArgs, ScheduleArgs, ScheduleCommand, ScheduleDoctorArgs,
     ScheduleListArgs, ScheduleNameArgs, ScheduleNativeRunArgs, ScheduleOverlapValue,
@@ -26,27 +28,58 @@ use crate::table;
 use crate::workspace::{self, WorkspaceLock};
 
 /// 将 schedule 子命令分派到声明管理、执行或原生平台操作。
-pub(crate) fn dispatch(arguments: ScheduleArgs, jobs: usize, verbose: bool) -> Result<i32> {
+pub(crate) fn dispatch(
+    arguments: ScheduleArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+) -> Result<i32> {
     match arguments.command {
-        ScheduleCommand::Add(arguments) => add(arguments),
-        ScheduleCommand::Plan(arguments) => plan(arguments),
-        ScheduleCommand::Run(arguments) => run(arguments, jobs, verbose),
-        ScheduleCommand::List(arguments) => list(arguments),
-        ScheduleCommand::NativeRun(arguments) => native_run(arguments),
-        ScheduleCommand::Status(arguments) => status(arguments),
-        ScheduleCommand::Doctor(arguments) => doctor(arguments),
-        ScheduleCommand::Generate(arguments) => generate(arguments),
-        ScheduleCommand::Register(arguments) => register(arguments),
-        ScheduleCommand::Remove(arguments) => remove(arguments),
-        ScheduleCommand::Unregister(arguments) => unregister(arguments),
-        ScheduleCommand::Update(arguments) => update(arguments),
+        ScheduleCommand::Add(arguments) => add(arguments, automation),
+        ScheduleCommand::Plan(arguments) => plan(arguments, automation),
+        ScheduleCommand::Run(arguments) => run(arguments, jobs, verbose, automation),
+        ScheduleCommand::List(arguments) => list(arguments, automation),
+        ScheduleCommand::NativeRun(arguments) => native_run(arguments, jobs, automation),
+        ScheduleCommand::Status(arguments) => status(arguments, automation),
+        ScheduleCommand::Doctor(arguments) => doctor(arguments, automation),
+        ScheduleCommand::Generate(arguments) => generate(arguments, automation),
+        ScheduleCommand::Register(arguments) => register(arguments, automation),
+        ScheduleCommand::Remove(arguments) => remove(arguments, automation),
+        ScheduleCommand::Unregister(arguments) => unregister(arguments, automation),
+        ScheduleCommand::Update(arguments) => update(arguments, automation),
     }
 }
 
+/// 以新版自动化协议返回单个 schedule 子命令的最终结果。
+fn emit_schedule_data<T: Serialize>(
+    automation: &AutomationOptions,
+    action: &str,
+    root: &Path,
+    exit_code: i32,
+    data: &T,
+) -> Result<()> {
+    automation::emit_data(
+        automation,
+        &format!("schedule {action}"),
+        Some(root),
+        exit_code,
+        data,
+    )
+}
+
+/// apply 仅在计划时记录的清单版本仍然匹配时执行 schedule 写操作。
+fn verify_apply_revision(root: &Path, automation: &AutomationOptions) -> Result<()> {
+    if let Some(expected) = &automation.expected_workspace_revision {
+        workspace::verify_revision(root, expected)?;
+    }
+    Ok(())
+}
+
 /// 校验并向 workspace.toml 添加新的定时任务声明。
-fn add(arguments: ScheduleAddArgs) -> Result<i32> {
+fn add(arguments: ScheduleAddArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
+    verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
     if manifest
         .schedules
@@ -60,7 +93,7 @@ fn add(arguments: ScheduleAddArgs) -> Result<i32> {
     }
     let scope = normalized_scope(&manifest, arguments.all, &arguments.repositories)?;
     let name = arguments.name;
-    manifest.schedules.push(ScheduleRecord {
+    let schedule = ScheduleRecord {
         name: name.clone(),
         enabled: !arguments.disabled,
         action: convert_action(arguments.action),
@@ -70,16 +103,22 @@ fn add(arguments: ScheduleAddArgs) -> Result<i32> {
         timezone: "local".to_owned(),
         overlap: convert_overlap(arguments.overlap),
         scope,
-    });
+    };
+    let output = json!({"status": "added", "schedule": &schedule});
+    manifest.schedules.push(schedule);
     workspace::write(&root, &mut manifest)?;
-    println!("schedule {name} added");
-    println!("next: batch-git schedule plan {name}");
-    println!("then: batch-git schedule register {name}");
+    if automation.is_machine() {
+        emit_schedule_data(automation, "add", &root, 0, &output)?;
+    } else {
+        println!("schedule {name} added");
+        println!("next: batch-git schedule plan {name}");
+        println!("then: batch-git schedule register {name}");
+    }
     Ok(0)
 }
 
 /// 更新声明中明确提供的字段，并提示用户重新注册原生任务。
-fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
+fn update(arguments: ScheduleUpdateArgs, automation: &AutomationOptions) -> Result<i32> {
     let has_trigger =
         arguments.at.is_some() || arguments.every.is_some() || arguments.cron.is_some();
     let has_scope = arguments.all || !arguments.repositories.is_empty();
@@ -95,6 +134,7 @@ fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
 
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
+    verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
     let registered = load_state(&root, &arguments.name)?.is_some();
     let scope = has_scope
@@ -125,28 +165,45 @@ fn update(arguments: ScheduleUpdateArgs) -> Result<i32> {
         schedule.enabled = false;
     }
     let enabled = schedule.enabled;
+    let updated_schedule = schedule.clone();
     workspace::write(&root, &mut manifest)?;
-    println!("schedule {} updated", arguments.name);
-    if registered && enabled {
-        println!(
-            "next: batch-git schedule register {}  # apply the native task update",
-            arguments.name
-        );
-    } else if registered {
-        println!(
-            "next: batch-git schedule unregister {}  # stop the disabled native task",
-            arguments.name
-        );
+    if automation.is_machine() {
+        emit_schedule_data(
+            automation,
+            "update",
+            &root,
+            0,
+            &json!({
+                "status": "updated",
+                "schedule": updated_schedule,
+                "was_registered": registered,
+                "native_update_required": registered && enabled,
+            }),
+        )?;
     } else {
-        println!("next: batch-git schedule plan {}", arguments.name);
+        println!("schedule {} updated", arguments.name);
+        if registered && enabled {
+            println!(
+                "next: batch-git schedule register {}  # apply the native task update",
+                arguments.name
+            );
+        } else if registered {
+            println!(
+                "next: batch-git schedule unregister {}  # stop the disabled native task",
+                arguments.name
+            );
+        } else {
+            println!("next: batch-git schedule plan {}", arguments.name);
+        }
     }
     Ok(0)
 }
 
 /// 删除声明；已注册任务必须先反注册或显式要求一并处理。
-fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
+fn remove(arguments: ScheduleRemoveArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
+    verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
     let Some(index) = manifest
         .schedules
@@ -162,8 +219,8 @@ fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
             arguments.name
         );
     }
-    if arguments.unregister {
-        unregister_locked(
+    let unregister = if arguments.unregister {
+        Some(unregister_locked(
             &root,
             ScheduleUnregisterArgs {
                 name: arguments.name.clone(),
@@ -171,11 +228,32 @@ fn remove(arguments: ScheduleRemoveArgs) -> Result<i32> {
                 dry_run: false,
                 purge_history: arguments.purge_history,
             },
-        )?;
-    }
+            automation.is_machine(),
+        )?)
+    } else {
+        None
+    };
     manifest.schedules.remove(index);
     workspace::write(&root, &mut manifest)?;
-    println!("schedule {} removed", arguments.name);
+    if automation.is_machine() {
+        emit_schedule_data(
+            automation,
+            "remove",
+            &root,
+            0,
+            &json!({
+                "status": "removed",
+                "schedule": arguments.name,
+                "unregistered": unregister,
+                "purged_history": arguments.purge_history,
+            }),
+        )?;
+    } else {
+        if let Some(unregister) = &unregister {
+            print_unregister_outcome(unregister);
+        }
+        println!("schedule {} removed", arguments.name);
+    }
     Ok(0)
 }
 
@@ -226,11 +304,13 @@ struct PlanOutput {
 }
 
 /// 只展示计划实际动作和仓库范围，不执行 Git 或系统调度器操作。
-fn plan(arguments: ScheduleNameArgs) -> Result<i32> {
+fn plan(arguments: ScheduleNameArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
     let output = build_plan(&manifest, &arguments.name)?;
-    if arguments.json {
+    if automation.is_machine() {
+        emit_schedule_data(automation, "plan", &root, 0, &output)?;
+    } else if arguments.json {
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         print_plan(&output);
@@ -276,7 +356,12 @@ fn print_plan(output: &PlanOutput) {
 }
 
 /// 立即执行声明，并根据 overlap 策略阻塞或跳过工作区锁。
-fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
+fn run(
+    arguments: ScheduleRunArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+) -> Result<i32> {
     let root = workspace::find_root()?;
     let initial = workspace::read(&root)?;
     let overlap = find_schedule(&initial, &arguments.name)?.overlap;
@@ -285,11 +370,26 @@ fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
         ScheduleOverlap::Skip => match WorkspaceLock::try_acquire(&root)? {
             Some(lock) => lock,
             None => {
-                println!("schedule {} skipped: workspace is locked", arguments.name);
+                if automation.is_machine() {
+                    emit_schedule_data(
+                        automation,
+                        "run",
+                        &root,
+                        0,
+                        &json!({
+                            "schedule": arguments.name,
+                            "status": "skipped",
+                            "reason_code": "workspace_locked",
+                        }),
+                    )?;
+                } else {
+                    println!("schedule {} skipped: workspace is locked", arguments.name);
+                }
                 return Ok(0);
             }
         },
     };
+    verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
     let schedule = find_schedule(&manifest, &arguments.name)?.clone();
     if !schedule.enabled {
@@ -297,22 +397,76 @@ fn run(arguments: ScheduleRunArgs, jobs: usize, verbose: bool) -> Result<i32> {
     }
     let repositories = selected_repositories(&manifest, &schedule)?;
     match schedule.action {
-        ScheduleAction::Sync => {
-            crate::commands::run_sync(&root, &mut manifest, &repositories, jobs, verbose)
-        }
-        ScheduleAction::Pull => {
-            crate::commands::run_pull(&root, &mut manifest, &repositories, jobs, verbose)
-        }
+        ScheduleAction::Sync => crate::commands::run_sync_named(
+            &root,
+            &mut manifest,
+            &repositories,
+            jobs,
+            verbose,
+            automation,
+            "schedule run",
+        ),
+        ScheduleAction::Pull => crate::commands::run_pull_named(
+            &root,
+            &mut manifest,
+            &repositories,
+            jobs,
+            verbose,
+            automation,
+            "schedule run",
+        ),
     }
 }
 
+/// Build the invocation forwarded by a native scheduler to the regular schedule runner.
+///
+/// Native schedulers are always unattended. Force the child to be non-interactive even when the
+/// outer `native-run` invocation uses text output, so Git cannot block on a terminal prompt.
+fn native_run_child_arguments(
+    name: &str,
+    jobs: usize,
+    automation: &AutomationOptions,
+) -> Vec<String> {
+    let mut child_arguments = Vec::new();
+    child_arguments.push("--jobs".to_owned());
+    child_arguments.push(jobs.to_string());
+    child_arguments.push("--non-interactive".to_owned());
+    if let Some(timeout) = automation.timeout {
+        child_arguments.push("--timeout".to_owned());
+        child_arguments.push(format!("{}s", timeout.as_secs()));
+    }
+    if automation.apply {
+        child_arguments.push("--apply".to_owned());
+        child_arguments.push("--expect-workspace-revision".to_owned());
+        child_arguments.push(
+            automation
+                .expected_workspace_revision
+                .clone()
+                .expect("validated --apply must include a workspace revision"),
+        );
+    }
+    child_arguments.extend(["schedule".to_owned(), "run".to_owned(), name.to_owned()]);
+    child_arguments
+}
+
 /// 供原生调度器调用的隐藏入口，负责日志重定向和稳定运行环境。
-fn native_run(arguments: ScheduleNativeRunArgs) -> Result<i32> {
+fn native_run(
+    arguments: ScheduleNativeRunArgs,
+    jobs: usize,
+    automation: &AutomationOptions,
+) -> Result<i32> {
     let root = workspace::find_root()?;
+    // Do not acquire the workspace lock here: the child must acquire it itself before verifying
+    // an apply revision and executing the selected repositories. Forwarding the global execution
+    // boundary makes native-run equivalent to a direct `schedule run` invocation.
+    // The outer check preserves a precise stale-plan receipt immediately; the forwarded child
+    // repeats it after acquiring the lock to close the time-of-check/time-of-use window.
+    verify_apply_revision(&root, automation)?;
+    let child_arguments = native_run_child_arguments(&arguments.name, jobs, automation);
     let mut command =
         Command::new(env::current_exe().context("failed to locate batch-git executable")?);
     command
-        .args(["schedule", "run", &arguments.name])
+        .args(&child_arguments)
         .current_dir(&root)
         .env("BATCH_GIT_WORKSPACE", &root)
         .env("NO_COLOR", "1")
@@ -347,7 +501,31 @@ fn native_run(arguments: ScheduleNativeRunArgs) -> Result<i32> {
     let status = command
         .status()
         .context("failed to launch scheduled batch-git run")?;
-    Ok(status.code().unwrap_or(1))
+    let exit_code = status.code().unwrap_or(1);
+    if exit_code == 2 {
+        // The child rechecks the revision only after it has acquired the workspace lock. If that
+        // second check rejected a plan that was valid for the outer preflight, repeat the check
+        // here so the parent preserves the stable stale-plan error instead of misclassifying it
+        // as a generic scheduler failure.
+        verify_apply_revision(&root, automation)?;
+        bail!(
+            "scheduled batch-git run could not start safely (child exited with status {exit_code})"
+        );
+    }
+    if automation.is_machine() {
+        emit_schedule_data(
+            automation,
+            "native-run",
+            &root,
+            exit_code,
+            &json!({
+                "schedule": arguments.name,
+                "status": if exit_code == 0 { "completed" } else { "failed" },
+                "child_exit_code": exit_code,
+            }),
+        )?;
+    }
+    Ok(exit_code)
 }
 
 /// schedule list 的单行序列化模型。
@@ -361,8 +539,37 @@ struct ScheduleListItem {
     registered: Option<String>,
 }
 
+/// 反注册流程的最终状态；remove 可复用它而不会产生第二个机器 receipt。
+#[derive(Serialize)]
+struct UnregisterOutcome {
+    schedule: String,
+    status: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    platform: Option<String>,
+    dry_run: bool,
+    purged_history: bool,
+}
+
+/// 保持原有文本模式下的反注册提示，同时让机器模式只输出一个 envelope。
+fn print_unregister_outcome(outcome: &UnregisterOutcome) {
+    match outcome.status {
+        "already_absent" => println!("schedule {} already absent", outcome.schedule),
+        "planned" => println!(
+            "would unregister schedule {} from {}",
+            outcome.schedule,
+            outcome.platform.as_deref().unwrap_or("-")
+        ),
+        "unregistered" => println!(
+            "schedule {} unregistered from {}",
+            outcome.schedule,
+            outcome.platform.as_deref().unwrap_or("-")
+        ),
+        _ => unreachable!("invalid unregister outcome status"),
+    }
+}
+
 /// 列出清单声明，并可显示已有本地注册状态的平台。
-fn list(arguments: ScheduleListArgs) -> Result<i32> {
+fn list(arguments: ScheduleListArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
     let items = manifest
@@ -392,7 +599,10 @@ fn list(arguments: ScheduleListArgs) -> Result<i32> {
             }
         })
         .collect::<Vec<_>>();
-    if arguments.json {
+    if automation.is_machine() {
+        // Keep the v1 envelope's data equal to the legacy `schedule list --json` payload.
+        emit_schedule_data(automation, "list", &root, 0, &items)?;
+    } else if arguments.json {
         println!("{}", serde_json::to_string_pretty(&items)?);
     } else {
         let mut headers = vec!["NAME", "ENABLED", "ACTION", "TRIGGER", "SCOPE"];
@@ -445,7 +655,7 @@ struct StatusOutput {
 }
 
 /// 对比当前声明、注册摘要、原生文件和系统任务实际状态。
-fn status(arguments: ScheduleNameArgs) -> Result<i32> {
+fn status(arguments: ScheduleNameArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
     let schedule = manifest
@@ -488,7 +698,9 @@ fn status(arguments: ScheduleNameArgs) -> Result<i32> {
             .unwrap_or_default(),
         updated_at: state.as_ref().map(|state| state.updated_at.clone()),
     };
-    if arguments.json {
+    if automation.is_machine() {
+        emit_schedule_data(automation, "status", &root, 0, &output)?;
+    } else if arguments.json {
         println!("{}", serde_json::to_string_pretty(&output)?);
     } else {
         let rows = vec![
@@ -586,7 +798,7 @@ fn status(arguments: ScheduleNameArgs) -> Result<i32> {
 }
 
 /// 在不写文件的前提下验证声明能否映射到目标原生平台。
-fn doctor(arguments: ScheduleDoctorArgs) -> Result<i32> {
+fn doctor(arguments: ScheduleDoctorArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
     let platform = NativePlatform::resolve(arguments.platform)?;
@@ -611,7 +823,10 @@ fn doctor(arguments: ScheduleDoctorArgs) -> Result<i32> {
             "status": "ok"
         }));
     }
-    if arguments.json {
+    if automation.is_machine() {
+        // Keep the v1 envelope's data equal to the legacy `schedule doctor --json` payload.
+        emit_schedule_data(automation, "doctor", &root, 0, &checks)?;
+    } else if arguments.json {
         println!("{}", serde_json::to_string_pretty(&checks)?);
     } else if checks.is_empty() {
         println!("no schedules declared");
@@ -629,21 +844,35 @@ fn doctor(arguments: ScheduleDoctorArgs) -> Result<i32> {
 }
 
 /// 生成并打印原生定义，供用户在注册前审核。
-fn generate(arguments: SchedulePlatformArgs) -> Result<i32> {
+fn generate(arguments: SchedulePlatformArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let manifest = workspace::read(&root)?;
     let schedule = find_schedule(&manifest, &arguments.name)?;
     let platform = NativePlatform::resolve(arguments.platform)?;
     let artifact = build_artifact(&root, schedule, platform)?;
-    print_artifact(&artifact);
+    if automation.is_machine() {
+        emit_schedule_data(
+            automation,
+            "generate",
+            &root,
+            0,
+            &json!({
+                "schedule": arguments.name,
+                "artifact": artifact_output(&artifact),
+            }),
+        )?;
+    } else {
+        print_artifact(&artifact);
+    }
     Ok(0)
 }
 
 /// 幂等创建或更新原生任务，并原子记录注册摘要。
-fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
+fn register(arguments: ScheduleRegisterArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     // 注册同时读取清单、写原生文件和状态摘要，必须与工作区更新串行化。
     let _lock = WorkspaceLock::acquire(&root)?;
+    verify_apply_revision(&root, automation)?;
     let manifest = workspace::read(&root)?;
     let schedule = find_schedule(&manifest, &arguments.name)?;
     if !schedule.enabled {
@@ -670,7 +899,23 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
         .is_some_and(|state| state.platform == platform.label() && state.digest == digest)
         && artifact_files_match(&artifact)?;
     if unchanged {
-        println!("schedule {} unchanged", arguments.name);
+        if automation.is_machine() {
+            emit_schedule_data(
+                automation,
+                "register",
+                &root,
+                0,
+                &json!({
+                    "schedule": &arguments.name,
+                    "status": "unchanged",
+                    "platform": platform.label(),
+                    "task_id": &artifact.task_id,
+                    "dry_run": false,
+                }),
+            )?;
+        } else {
+            println!("schedule {} unchanged", arguments.name);
+        }
         return Ok(0);
     }
     let native_collision = artifact.files.iter().any(|file| file.path.exists())
@@ -682,17 +927,35 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
         );
     }
     if arguments.dry_run {
-        println!(
-            "would {} schedule {} on {}",
-            if existing_state.is_some() {
-                "update"
-            } else {
-                "register"
-            },
-            arguments.name,
-            platform.label()
-        );
-        print_artifact(&artifact);
+        let operation = if existing_state.is_some() {
+            "update"
+        } else {
+            "register"
+        };
+        if automation.is_machine() {
+            emit_schedule_data(
+                automation,
+                "register",
+                &root,
+                0,
+                &json!({
+                    "schedule": &arguments.name,
+                    "status": "planned",
+                    "operation": operation,
+                    "platform": platform.label(),
+                    "task_id": &artifact.task_id,
+                    "dry_run": true,
+                    "artifact": artifact_output(&artifact),
+                }),
+            )?;
+        } else {
+            println!(
+                "would {operation} schedule {} on {}",
+                arguments.name,
+                platform.label()
+            );
+            print_artifact(&artifact);
+        }
         return Ok(0);
     }
 
@@ -700,7 +963,7 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
     let updating_same_platform = existing_state
         .as_ref()
         .is_some_and(|state| state.platform == platform.label());
-    write_and_activate(&artifact, updating_same_platform)?;
+    write_and_activate(&artifact, updating_same_platform, automation.is_machine())?;
     let timestamp = now();
     let state = RegistrationState {
         workspace: root.display().to_string(),
@@ -730,40 +993,75 @@ fn register(arguments: ScheduleRegisterArgs) -> Result<i32> {
     };
     if let Some(previous) = &existing_state
         && previous.platform != platform.label()
-        && let Err(error) = deactivate(previous).and_then(|()| remove_registered_files(previous))
+        && let Err(error) = deactivate(previous, automation.is_machine())
+            .and_then(|()| remove_registered_files(previous, automation.is_machine()))
     {
-        let _ = deactivate(&state);
-        let _ = remove_registered_files(&state);
+        let _ = deactivate(&state, automation.is_machine());
+        let _ = remove_registered_files(&state, automation.is_machine());
         return Err(error).context("failed to remove previous schedule registration");
     }
     write_state(&root, &state)?;
-    println!(
-        "schedule {} {} on {}",
-        arguments.name,
-        if was_registered {
-            "updated"
-        } else {
-            "registered"
-        },
-        platform.label()
-    );
-    println!("verify: batch-git schedule status {}", arguments.name);
+    let status = if was_registered {
+        "updated"
+    } else {
+        "registered"
+    };
+    if automation.is_machine() {
+        emit_schedule_data(
+            automation,
+            "register",
+            &root,
+            0,
+            &json!({
+                "schedule": &arguments.name,
+                "status": status,
+                "platform": platform.label(),
+                "task_id": &state.task_id,
+                "dry_run": false,
+                "logging": state.log_enabled,
+                "native_files": &state.files,
+            }),
+        )?;
+    } else {
+        println!(
+            "schedule {} {status} on {}",
+            arguments.name,
+            platform.label()
+        );
+        println!("verify: batch-git schedule status {}", arguments.name);
+    }
     Ok(0)
 }
 
 /// 获取工作区锁后反注册一个原生任务。
-fn unregister(arguments: ScheduleUnregisterArgs) -> Result<i32> {
+fn unregister(arguments: ScheduleUnregisterArgs, automation: &AutomationOptions) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
-    unregister_locked(&root, arguments)
+    verify_apply_revision(&root, automation)?;
+    let outcome = unregister_locked(&root, arguments, automation.is_machine())?;
+    if automation.is_machine() {
+        emit_schedule_data(automation, "unregister", &root, 0, &outcome)?;
+    } else {
+        print_unregister_outcome(&outcome);
+    }
+    Ok(0)
 }
 
 /// 在调用方已持锁时停用任务、移除定义和可选历史记录。
-fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i32> {
+fn unregister_locked(
+    root: &Path,
+    arguments: ScheduleUnregisterArgs,
+    quiet: bool,
+) -> Result<UnregisterOutcome> {
     let state = load_state(root, &arguments.name)?;
     let Some(state) = state else {
-        println!("schedule {} already absent", arguments.name);
-        return Ok(0);
+        return Ok(UnregisterOutcome {
+            schedule: arguments.name,
+            status: "already_absent",
+            platform: None,
+            dry_run: false,
+            purged_history: false,
+        });
     };
     let requested = match arguments.platform {
         SchedulePlatform::Auto => NativePlatform::from_label(&state.platform)?,
@@ -778,14 +1076,16 @@ fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i
         );
     }
     if arguments.dry_run {
-        println!(
-            "would unregister schedule {} from {}",
-            arguments.name, state.platform
-        );
-        return Ok(0);
+        return Ok(UnregisterOutcome {
+            schedule: arguments.name,
+            status: "planned",
+            platform: Some(state.platform),
+            dry_run: true,
+            purged_history: false,
+        });
     }
-    deactivate(&state)?;
-    remove_registered_files(&state)?;
+    deactivate(&state, quiet)?;
+    remove_registered_files(&state, quiet)?;
     let state_path = registration_state_path(root, &arguments.name)?;
     if state_path.exists() {
         fs::remove_file(&state_path)
@@ -798,11 +1098,13 @@ fn unregister_locked(root: &Path, arguments: ScheduleUnregisterArgs) -> Result<i
                 .with_context(|| format!("failed to remove {}", logs.display()))?;
         }
     }
-    println!(
-        "schedule {} unregistered from {}",
-        arguments.name, state.platform
-    );
-    Ok(0)
+    Ok(UnregisterOutcome {
+        schedule: arguments.name,
+        status: "unregistered",
+        platform: Some(state.platform),
+        dry_run: false,
+        purged_history: arguments.purge_history,
+    })
 }
 
 /// 按唯一名称查找计划并生成一致的未知计划错误。
@@ -1369,8 +1671,33 @@ fn print_artifact(artifact: &NativeArtifact) {
     }
 }
 
+/// 把待注册的原生定义转换为机器输出，保留人工审核所需的完整内容。
+fn artifact_output(artifact: &NativeArtifact) -> serde_json::Value {
+    json!({
+        "platform": artifact.platform.label(),
+        "task_id": &artifact.task_id,
+        "logging": artifact.log_enabled,
+        "log_directory": artifact
+            .log_directory
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        "stdout": artifact
+            .stdout_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        "stderr": artifact
+            .stderr_path
+            .as_ref()
+            .map(|path| path.display().to_string()),
+        "files": artifact.files.iter().map(|file| json!({
+            "path": file.path.display().to_string(),
+            "content": &file.content,
+        })).collect::<Vec<_>>(),
+    })
+}
+
 /// 原子写入所有定义后激活任务；失败时尽量恢复旧文件。
-fn write_and_activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
+fn write_and_activate(artifact: &NativeArtifact, updating: bool, quiet: bool) -> Result<()> {
     if let Some(log_directory) = &artifact.log_directory {
         fs::create_dir_all(log_directory).with_context(|| {
             format!(
@@ -1387,7 +1714,7 @@ fn write_and_activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
     for file in &artifact.files {
         atomic_write(&file.path, file.content.as_bytes())?;
     }
-    if let Err(error) = activate(artifact, updating) {
+    if let Err(error) = activate(artifact, updating, quiet) {
         for (file, backup) in artifact.files.iter().zip(backups) {
             match backup {
                 Some(content) => {
@@ -1398,49 +1725,52 @@ fn write_and_activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
                 }
             }
         }
-        let _ = reactivate_restored_files(artifact);
+        let _ = reactivate_restored_files(artifact, quiet);
         return Err(error);
     }
     Ok(())
 }
 
 /// 调用目标平台命令加载或更新用户级任务。
-fn activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
+fn activate(artifact: &NativeArtifact, updating: bool, quiet: bool) -> Result<()> {
     match artifact.platform {
         NativePlatform::Launchd => {
             let domain = launchd_domain()?;
             if updating {
                 let target = format!("{domain}/{}", artifact.task_id);
-                let _ = Command::new("launchctl")
-                    .args(["bootout", &target])
-                    .status();
+                let mut command = Command::new("launchctl");
+                command.args(["bootout", &target]);
+                suppress_command_output(&mut command, quiet);
+                let _ = command.status();
             }
-            let status = Command::new("launchctl")
+            let mut command = Command::new("launchctl");
+            command
                 .args(["bootstrap", &domain])
-                .arg(&artifact.files[0].path)
-                .status()
-                .context("failed to execute launchctl")?;
+                .arg(&artifact.files[0].path);
+            suppress_command_output(&mut command, quiet);
+            let status = command.status().context("failed to execute launchctl")?;
             if !status.success() {
                 bail!("launchctl bootstrap failed with {status}");
             }
         }
         NativePlatform::Systemd => {
-            run_systemctl(["daemon-reload"])?;
+            run_systemctl(["daemon-reload"], quiet)?;
             let timer = format!("{}.timer", artifact.task_id);
             if updating {
-                run_systemctl(["restart", timer.as_str()])?;
-                run_systemctl(["enable", timer.as_str()])?;
+                run_systemctl(["restart", timer.as_str()], quiet)?;
+                run_systemctl(["enable", timer.as_str()], quiet)?;
             } else {
-                run_systemctl(["enable", "--now", timer.as_str()])?;
+                run_systemctl(["enable", "--now", timer.as_str()], quiet)?;
             }
         }
         NativePlatform::Windows => {
-            let status = Command::new("schtasks.exe")
+            let mut command = Command::new("schtasks.exe");
+            command
                 .args(["/Create", "/TN", &artifact.task_id, "/XML"])
                 .arg(&artifact.files[0].path)
-                .arg("/F")
-                .status()
-                .context("failed to execute schtasks.exe")?;
+                .arg("/F");
+            suppress_command_output(&mut command, quiet);
+            let status = command.status().context("failed to execute schtasks.exe")?;
             if !status.success() {
                 bail!("schtasks.exe /Create failed with {status}");
             }
@@ -1450,25 +1780,28 @@ fn activate(artifact: &NativeArtifact, updating: bool) -> Result<()> {
 }
 
 /// 根据注册摘要调用平台命令停用任务。
-fn deactivate(state: &RegistrationState) -> Result<()> {
+fn deactivate(state: &RegistrationState, quiet: bool) -> Result<()> {
     match state.platform.as_str() {
         "launchd" => {
             let domain = launchd_domain()?;
             let target = format!("{domain}/{}", state.task_id);
-            let _ = Command::new("launchctl")
-                .args(["bootout", &target])
-                .status();
+            let mut command = Command::new("launchctl");
+            command.args(["bootout", &target]);
+            suppress_command_output(&mut command, quiet);
+            let _ = command.status();
         }
         "systemd" => {
             let timer = format!("{}.timer", state.task_id);
-            let _ = Command::new("systemctl")
-                .args(["--user", "disable", "--now", timer.as_str()])
-                .status();
+            let mut command = Command::new("systemctl");
+            command.args(["--user", "disable", "--now", timer.as_str()]);
+            suppress_command_output(&mut command, quiet);
+            let _ = command.status();
         }
         "windows" => {
-            let _ = Command::new("schtasks.exe")
-                .args(["/Delete", "/TN", &state.task_id, "/F"])
-                .status();
+            let mut command = Command::new("schtasks.exe");
+            command.args(["/Delete", "/TN", &state.task_id, "/F"]);
+            suppress_command_output(&mut command, quiet);
+            let _ = command.status();
         }
         platform => bail!("unsupported registered schedule platform: {platform}"),
     }
@@ -1476,14 +1809,17 @@ fn deactivate(state: &RegistrationState) -> Result<()> {
 }
 
 /// 更新失败并恢复旧文件后，尽力重新加载旧任务。
-fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
+fn reactivate_restored_files(artifact: &NativeArtifact, quiet: bool) -> Result<()> {
     match artifact.platform {
         NativePlatform::Launchd => {
             if artifact.files[0].path.is_file() {
                 let domain = launchd_domain()?;
-                let status = Command::new("launchctl")
+                let mut command = Command::new("launchctl");
+                command
                     .args(["bootstrap", &domain])
-                    .arg(&artifact.files[0].path)
+                    .arg(&artifact.files[0].path);
+                suppress_command_output(&mut command, quiet);
+                let status = command
                     .status()
                     .context("failed to restore previous launchd task")?;
                 if !status.success() {
@@ -1492,16 +1828,19 @@ fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
             }
         }
         NativePlatform::Systemd => {
-            run_systemctl(["daemon-reload"])?;
+            run_systemctl(["daemon-reload"], quiet)?;
             let timer = format!("{}.timer", artifact.task_id);
-            let _ = run_systemctl(["restart", timer.as_str()]);
+            let _ = run_systemctl(["restart", timer.as_str()], quiet);
         }
         NativePlatform::Windows => {
             if artifact.files[0].path.is_file() {
-                let status = Command::new("schtasks.exe")
+                let mut command = Command::new("schtasks.exe");
+                command
                     .args(["/Create", "/TN", &artifact.task_id, "/XML"])
                     .arg(&artifact.files[0].path)
-                    .arg("/F")
+                    .arg("/F");
+                suppress_command_output(&mut command, quiet);
+                let status = command
                     .status()
                     .context("failed to restore previous Windows scheduled task")?;
                 if !status.success() {
@@ -1514,16 +1853,22 @@ fn reactivate_restored_files(artifact: &NativeArtifact) -> Result<()> {
 }
 
 /// 执行 systemctl --user 并统一补充错误上下文。
-fn run_systemctl<const N: usize>(arguments: [&str; N]) -> Result<()> {
-    let status = Command::new("systemctl")
-        .arg("--user")
-        .args(arguments)
-        .status()
-        .context("failed to execute systemctl")?;
+fn run_systemctl<const N: usize>(arguments: [&str; N], quiet: bool) -> Result<()> {
+    let mut command = Command::new("systemctl");
+    command.arg("--user").args(arguments);
+    suppress_command_output(&mut command, quiet);
+    let status = command.status().context("failed to execute systemctl")?;
     if !status.success() {
         bail!("systemctl failed with {status}");
     }
     Ok(())
+}
+
+/// 在机器输出模式中屏蔽原生调度器命令的杂项诊断。
+fn suppress_command_output(command: &mut Command, quiet: bool) {
+    if quiet {
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+    }
 }
 
 /// 查询目标平台是否已经存在同 ID 的原生任务。
@@ -1812,7 +2157,7 @@ fn home_directory() -> Result<PathBuf> {
 }
 
 /// 只删除注册摘要中记录且通过安全校验的原生文件。
-fn remove_registered_files(state: &RegistrationState) -> Result<()> {
+fn remove_registered_files(state: &RegistrationState, quiet: bool) -> Result<()> {
     for file in &state.files {
         let path = PathBuf::from(file);
         if path.exists() {
@@ -1821,7 +2166,7 @@ fn remove_registered_files(state: &RegistrationState) -> Result<()> {
         }
     }
     if state.platform == "systemd" {
-        run_systemctl(["daemon-reload"])?;
+        run_systemctl(["daemon-reload"], quiet)?;
     }
     Ok(())
 }
@@ -1924,9 +2269,11 @@ fn systemd_quote(value: &str) -> String {
 mod tests {
     use super::{
         NativePlatform, artifact_digest, build_artifact, build_artifact_with_logging,
-        build_artifact_with_options, fnv1a, launchd_cron_trigger, systemd_cron_trigger,
-        systemd_quote, windows_argument, windows_repetition_interval, xml_escape,
+        build_artifact_with_options, fnv1a, launchd_cron_trigger, native_run_child_arguments,
+        systemd_cron_trigger, systemd_quote, windows_argument, windows_repetition_interval,
+        xml_escape,
     };
+    use crate::automation::AutomationOptions;
     use crate::cron::CronExpression;
     use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScope};
 
@@ -1935,6 +2282,24 @@ mod tests {
         assert_eq!(fnv1a(b"workspace"), 0x40e26138f4336c36);
         assert_eq!(xml_escape("a&<b>"), "a&amp;&lt;b&gt;");
         assert_eq!(systemd_quote("a b"), "\"a b\"");
+    }
+
+    #[test]
+    fn native_run_child_forces_non_interactive_execution() {
+        let arguments =
+            native_run_child_arguments("nightly-sync", 4, &AutomationOptions::default());
+
+        assert_eq!(
+            arguments,
+            vec![
+                "--jobs",
+                "4",
+                "--non-interactive",
+                "schedule",
+                "run",
+                "nightly-sync",
+            ]
+        );
     }
 
     #[test]

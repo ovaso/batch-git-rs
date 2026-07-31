@@ -1,10 +1,17 @@
 //! Stable, per-repository command results and rendering.
 
+use std::collections::BTreeMap;
 use std::io::{self, IsTerminal, Write};
+use std::path::Path;
+use std::sync::Mutex;
 
+use anyhow::Result;
 use console::Term;
+use serde::Serialize;
+use serde_json::json;
 use unicode_width::UnicodeWidthStr;
 
+use crate::automation::{AutomationOptions, OutputFormat};
 use crate::git::GitOutput;
 use crate::model::RepositoryRecord;
 use crate::{color, table};
@@ -68,6 +75,109 @@ pub(crate) struct RepositoryResult {
     stderr: String,
     exit_code: Option<i32>,
     synced: bool,
+}
+
+#[derive(Serialize)]
+struct MachineRepositoryResult<'a> {
+    repository: &'a str,
+    directory: &'a str,
+    status: &'static str,
+    detail: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason_code: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    exit_code: Option<i32>,
+    synchronized: bool,
+}
+
+#[derive(Serialize)]
+struct MachineSummary {
+    ok: usize,
+    skipped: usize,
+    failed: usize,
+}
+
+#[derive(Serialize)]
+struct MachineBatchResult<'a> {
+    summary: MachineSummary,
+    results: Vec<MachineRepositoryResult<'a>>,
+}
+
+/// Serializes completion events from concurrent workers without delaying them until aggregation.
+///
+/// JSONL preserves the v1 manifest-order contract: out-of-order completions are buffered only
+/// until their predecessors arrive, then the contiguous finished prefix is emitted immediately.
+pub(crate) struct JsonlProgress<'a> {
+    automation: &'a AutomationOptions,
+    command: String,
+    root: &'a Path,
+    state: Mutex<JsonlProgressState>,
+}
+
+struct JsonlProgressState {
+    next_index: usize,
+    pending: BTreeMap<usize, serde_json::Value>,
+}
+
+impl<'a> JsonlProgress<'a> {
+    /// Emit an immediate lifecycle start event when JSONL progress is requested.
+    pub(crate) fn new(
+        automation: &'a AutomationOptions,
+        command: &str,
+        root: &'a Path,
+        repositories: usize,
+    ) -> Result<Option<Self>> {
+        if automation.output != OutputFormat::Jsonl {
+            return Ok(None);
+        }
+        crate::automation::emit_event(
+            automation,
+            "started",
+            command,
+            Some(root),
+            json!({"repositories": repositories}),
+        )?;
+        Ok(Some(Self {
+            automation,
+            command: command.to_owned(),
+            root,
+            state: Mutex::new(JsonlProgressState {
+                next_index: 0,
+                pending: BTreeMap::new(),
+            }),
+        }))
+    }
+
+    /// Emit a repository result at completion time. Serialization cannot fail for this fixed
+    /// record shape; a poisoned stdout lock indicates the process is already unwinding.
+    pub(crate) fn repository_finished(&self, index: usize, result: &RepositoryResult) {
+        self.repository_finished_value(index, json!(result.machine()));
+    }
+
+    /// Emit a repository-shaped result supplied by a command that does not use `RepositoryResult`
+    /// internally (for example, scan candidates before they exist in the manifest).
+    pub(crate) fn repository_finished_value(&self, index: usize, result: serde_json::Value) {
+        let data = json!({ "repository_index": index, "result": result });
+        let mut state = self
+            .state
+            .lock()
+            .expect("JSONL output lock must not be poisoned");
+        state.pending.insert(index, data);
+        while let Some(data) = {
+            let next_index = state.next_index;
+            state.pending.remove(&next_index)
+        } {
+            crate::automation::emit_event(
+                self.automation,
+                "repository_finished",
+                &self.command,
+                Some(self.root),
+                data,
+            )
+            .expect("fixed JSONL repository event must serialize");
+            state.next_index += 1;
+        }
+    }
 }
 
 impl RepositoryResult {
@@ -149,6 +259,45 @@ impl RepositoryResult {
         self.kind == ResultKind::Failed
     }
 
+    fn machine(&self) -> MachineRepositoryResult<'_> {
+        MachineRepositoryResult {
+            repository: &self.name,
+            directory: &self.directory,
+            status: self.kind.label(),
+            detail: &self.detail,
+            reason_code: self.reason_code(),
+            exit_code: self.exit_code,
+            synchronized: self.synced,
+        }
+    }
+
+    fn reason_code(&self) -> Option<&'static str> {
+        let detail = self.detail.to_ascii_lowercase();
+        if detail.contains("working tree is not clean") {
+            Some("dirty_worktree")
+        } else if detail.contains("has no upstream") {
+            Some("no_upstream")
+        } else if detail.contains("branch is ambiguous") {
+            Some("branch_ambiguous")
+        } else if detail.contains("does not exist") {
+            Some("branch_missing")
+        } else if detail.contains("not materialized") || detail.contains("not a git repository") {
+            Some("repository_unavailable")
+        } else if detail.contains("nothing to push") {
+            Some("nothing_to_push")
+        } else if detail.contains("nothing to commit") {
+            Some("nothing_to_commit")
+        } else if detail.contains("timed out") {
+            Some("timeout")
+        } else if self.exit_code.is_some() {
+            Some("git_exit")
+        } else if self.kind == ResultKind::Failed {
+            Some("operation_failed")
+        } else {
+            None
+        }
+    }
+
     /// 生成进度条结束时显示的短状态。
     pub(crate) fn progress_label(&self) -> String {
         match self.kind {
@@ -160,11 +309,12 @@ impl RepositoryResult {
 
     /// 构造不带 Git stdout/stderr 的基础结果。
     fn plain(repository: &RepositoryRecord, kind: ResultKind, detail: impl Into<String>) -> Self {
+        let detail = crate::automation::sanitize_message(&detail.into());
         Self {
             name: repository.name.clone(),
             directory: repository.directory.clone(),
             kind,
-            detail: detail.into(),
+            detail,
             stdout: String::new(),
             stderr: String::new(),
             exit_code: None,
@@ -174,7 +324,16 @@ impl RepositoryResult {
 }
 
 /// 打印 clone/restore/fetch 风格摘要，并返回聚合退出码。
-pub(crate) fn print_operation_summary(results: &[RepositoryResult], verbose: bool) -> i32 {
+pub(crate) fn print_operation_summary(
+    results: &[RepositoryResult],
+    verbose: bool,
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    if automation.is_machine() {
+        return print_machine_results(results, automation, command, root);
+    }
     let rows = results
         .iter()
         .map(|outcome| {
@@ -199,17 +358,37 @@ pub(crate) fn print_operation_summary(results: &[RepositoryResult], verbose: boo
             print_child_output(&outcome.stdout, &outcome.stderr, OutputBlockStyle::detect());
         }
     }
-    print_summary(results)
+    Ok(print_summary(results))
 }
 
 /// 打印用户选中仓库的通用结果。
-pub(crate) fn print_selected_results(results: &[RepositoryResult], verbose: bool) -> i32 {
-    print_selected_results_with_comments(results, verbose, false)
+pub(crate) fn print_selected_results(
+    results: &[RepositoryResult],
+    verbose: bool,
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    if automation.is_machine() {
+        return print_machine_results(results, automation, command, root);
+    }
+    Ok(print_selected_results_with_comments(
+        results, verbose, false,
+    ))
 }
 
 /// 打印 push 结果，并显示“无 upstream”等跳过原因。
-pub(crate) fn print_push_summary(results: &[RepositoryResult], verbose: bool) -> i32 {
-    print_selected_results_with_comments(results, verbose, true)
+pub(crate) fn print_push_summary(
+    results: &[RepositoryResult],
+    verbose: bool,
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    if automation.is_machine() {
+        return print_machine_results(results, automation, command, root);
+    }
+    Ok(print_selected_results_with_comments(results, verbose, true))
 }
 
 /// 实现选中仓库结果表，并按策略附加详细输出块。
@@ -251,7 +430,16 @@ fn print_selected_results_with_comments(
 }
 
 /// 打印全工作区 Git 透传结果，成功输出默认可见。
-pub(crate) fn print_results(results: &[RepositoryResult], verbose: bool) -> i32 {
+pub(crate) fn print_results(
+    results: &[RepositoryResult],
+    verbose: bool,
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    if automation.is_machine() {
+        return print_machine_results(results, automation, command, root);
+    }
     let style = OutputBlockStyle::detect();
     let visible_output = results
         .iter()
@@ -285,7 +473,7 @@ pub(crate) fn print_results(results: &[RepositoryResult], verbose: bool) -> i32 
         }
     }
 
-    print_summary(results)
+    Ok(print_summary(results))
 }
 
 /// 输出成功/跳过/失败计数，并据此返回 0 或 1。
@@ -317,7 +505,13 @@ pub(crate) fn print_checkout_summary(
     branches: &[String],
     default_branches: &[String],
     feature_branch: Option<&str>,
-) -> i32 {
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    if automation.is_machine() {
+        return print_machine_results(results, automation, command, root);
+    }
     debug_assert_eq!(results.len(), branches.len());
     debug_assert_eq!(results.len(), default_branches.len());
     let rows = results
@@ -345,7 +539,49 @@ pub(crate) fn print_checkout_summary(
             &rows
         )
     );
-    print_summary(results)
+    Ok(print_summary(results))
+}
+
+fn print_machine_results(
+    results: &[RepositoryResult],
+    automation: &AutomationOptions,
+    command: &str,
+    root: &Path,
+) -> Result<i32> {
+    let summary = machine_summary(results);
+    let exit_code = i32::from(summary.failed > 0);
+    if automation.output == OutputFormat::Jsonl {
+        crate::automation::emit_finished(
+            automation,
+            command,
+            Some(root),
+            exit_code,
+            serde_json::to_value(&summary)?,
+        )?;
+    } else {
+        let data = MachineBatchResult {
+            summary,
+            results: results.iter().map(RepositoryResult::machine).collect(),
+        };
+        crate::automation::emit_data(automation, command, Some(root), exit_code, &data)?;
+    }
+    Ok(exit_code)
+}
+
+fn machine_summary(results: &[RepositoryResult]) -> MachineSummary {
+    let mut summary = MachineSummary {
+        ok: 0,
+        skipped: 0,
+        failed: 0,
+    };
+    for result in results {
+        match result.kind {
+            ResultKind::Success => summary.ok += 1,
+            ResultKind::Skipped => summary.skipped += 1,
+            ResultKind::Failed => summary.failed += 1,
+        }
+    }
+    summary
 }
 
 /// 依次打印非空 stdout 和 stderr，并保留二者来源。

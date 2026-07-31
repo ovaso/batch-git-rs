@@ -1,0 +1,19 @@
+name: Feature request
+description: Propose a safe, cross-platform workflow improvement
+title: "feature: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: User workflow
+      description: Explain the current limitation and desired outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety and platform impact
+      description: Describe Git side effects, workspace/schema impact, and macOS/Linux/Windows considerations.
+    validations:
+      required: true

@@ -18,3 +18,37 @@ where
     // IndexedParallelIterator 的 collect 会恢复输入顺序，使批量输出保持稳定。
     Ok(pool.install(|| items.par_iter().map(operation).collect()))
 }
+
+/// Map concurrently and invoke a callback when each worker has finished an item.
+///
+/// The returned vector follows input order, while completion callbacks run in worker completion
+/// order. Callers that expose an order-sensitive protocol can use the supplied input index to
+/// buffer callbacks before rendering them.
+pub fn map_ordered_with_completion<T, R, F, C>(
+    items: &[T],
+    jobs: usize,
+    operation: F,
+    completed: C,
+) -> Result<Vec<R>>
+where
+    T: Sync,
+    R: Send,
+    F: Fn(&T) -> R + Sync + Send,
+    C: Fn(usize, &R) + Sync + Send,
+{
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(jobs)
+        .build()
+        .context("failed to create worker pool")?;
+    Ok(pool.install(|| {
+        items
+            .par_iter()
+            .enumerate()
+            .map(|(index, item)| {
+                let result = operation(item);
+                completed(index, &result);
+                result
+            })
+            .collect()
+    }))
+}

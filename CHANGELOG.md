@@ -1,8 +1,41 @@
 # 变更记录
 
-本文采用面向发布的变更记录格式。当前项目版本见 `Cargo.toml`。
+本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
+[语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
-## 0.1.1 - 2026-07-29
+## [Unreleased]
+
+## [0.2.0] - 2026-07-31
+
+### Added
+
+- GitHub Actions 质量门禁、三平台发布构建、依赖升级与安全审计；
+- 贡献、安全、兼容性、架构、自动化契约和 agent 协作说明；
+- `batch-git-automation` 仓库内 skill，用于安全编排多仓库操作。
+- automation protocol v1：全局 `--output json|jsonl`、`--request-id`、所有公开内建命令与
+  schedule 子命令的机器 receipt，以及不污染 stdout、按清单顺序输出的批量仓库事件流；单仓库
+  `clone` 同样输出完整的 `started`、`repository_finished`、`finished` 生命周期；
+- `capabilities` 与 `schema operation-result|workspace`，使 agent 可从当前二进制发现协议、
+  安全边界和 JSON Schema，而不是猜测安装版本；
+- `--plan` / `--apply --expect-workspace-revision`：零副作用预览已解析范围、风险和副作用，
+  并在执行前核对 `workspace.toml` SHA-256 revision；
+- `--non-interactive` 与每个系统 Git 子进程的 `--timeout`；timeout 只终止直接启动的子进程，Git
+  后代进程可能继续存活；clone/restore 超时或失败时保留目标目录供人工检查，避免递归删除
+  并发写入的内容；
+- 原生 schedule 的隐藏 `native-run` child 始终非交互，避免 scheduler 或无终端环境等待 Git
+  认证提示，并把 child 在获取锁后发现的 stale revision 保持为
+  `stale_workspace_revision`，而非泛化为调度器错误；
+- 自动化协议黑盒测试，覆盖新旧 JSON 兼容、结构化参数错误、schedule receipt 和 stale-plan
+  拒绝。
+
+### Changed
+
+- `status` 与 `branch` 增加兼容的直接 `--json` payload；已有 `list`、`find`、`info` 和
+  schedule `--json` 顶层结构保持不变。
+- 机器模式不再转发 Git 或原生调度器的原始 stdout/stderr；批量结果通过稳定 status 和
+  `reason_code` 表达，避免凭据或非结构化诊断进入协议。
+
+## [0.1.1] - 2026-07-29
 
 补丁版本，修复 Git 代理、远端配置和定时任务并发问题，并缩小发布产物。
 
@@ -30,7 +63,7 @@
 - 新增系统 Git clone 参数代理和 push URL 同步回归测试；
 - 全部单元与端到端测试、Clippy、格式检查和 release 构建通过。
 
-## 0.1.0 - 2026-07-29
+## [0.1.0] - 2026-07-29
 
 首个封版版本。
 
@@ -71,3 +104,8 @@
 - 不支持 Quartz `L`、`W`、`#` 或年份字段；
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
+
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/livenv/batch-git/compare/v0.1.1...v0.2.0
+[0.1.1]: https://github.com/livenv/batch-git/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/livenv/batch-git/releases/tag/v0.1.0

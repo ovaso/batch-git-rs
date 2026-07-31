@@ -1,9 +1,13 @@
 # batch-git
 
+[![CI](https://github.com/livenv/batch-git/actions/workflows/ci.yml/badge.svg)](https://github.com/livenv/batch-git/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/livenv/batch-git)](https://github.com/livenv/batch-git/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
 `workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
-当前封版版本：`0.1.1`。
+当前封版版本：`0.2.0`。
 
 ## 主要能力
 
@@ -12,9 +16,12 @@
 - 批量 fetch、fast-forward pull、push、checkout、merge 和查看状态；
 - 按仓库精确选择或按名称通配后执行原生 Git 命令；
 - 在 macOS `launchd`、Linux `systemd --user` 或 Windows Task Scheduler 中注册定时同步；
-- 有界并发、稳定输出顺序、工作区锁和聚合退出码。
+- 有界并发、稳定输出顺序、工作区锁和聚合退出码；
+- 面向 CI 与 agent 的版本化 JSON / JSON Lines 协议、结构化错误、能力发现和 plan/apply
+  清单前置条件。
 
 `batch-git` 不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
+clone 或 restore 失败/超时时也不会递归删除目标目录；保留的内容须由用户检查并明确处理后才能重试。
 
 ## 安装
 
@@ -98,12 +105,39 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 
 完整参数以 `batch-git --help` 和各子命令的 `--help` 为准。
 
+## 自动化与 agent
+
+新自动化优先使用全局 `--output json`，而不是解析表格或旧的子命令 `--json`：
+
+```sh
+# 先发现当前二进制的能力，再读取稳定 receipt。
+batch-git --output json capabilities
+batch-git --output json --request-id ci-184 status
+
+# 预览批量同步；apply 会重新核对 plan 返回的 workspace revision。
+batch-git --output json --plan sync --match 'service-*'
+batch-git --output json --apply --expect-workspace-revision 'sha256:…' \
+  sync --match 'service-*'
+```
+
+长任务可使用 `--output jsonl` 逐行消费 `started`、`repository_finished` 和 `finished`
+事件；单仓库 `clone` 也会按此顺序发出一个仓库终态事件。仓库事件保持清单顺序，已先完成的
+后序仓库可能等待前序事件。`--non-interactive` 禁止 Git 提示，`--timeout 5m` 只限制直接启动的
+Git 子进程，不能保证终止其认证或传输后代进程。
+`schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 表示，清单中可省略有默认值的字段。完整字段、
+兼容策略和安全边界见[自动化契约](docs/AUTOMATION_CONTRACTS.md)；仓库内 skill 提供 agent
+的默认操作流程。
+
 ## 文档
 
 - [用户手册](docs/USER_GUIDE.md)：安装、工作流、命令说明和故障排查；
 - [工作区清单](docs/WORKSPACE.md)：`workspace.toml` 格式、环境变量和状态目录；
 - [定时任务](docs/SCHEDULES.md)：声明、验证、注册、日志和平台差异；
 - [开发与发布](docs/DEVELOPMENT.md)：验证命令、实现边界和封版检查；
+- [架构说明](docs/ARCHITECTURE.md)：模块职责、并发、锁与 Git 执行边界；
+- [兼容性](docs/COMPATIBILITY.md)：Rust、Git、平台与调度器支持矩阵；
+- [自动化契约](docs/AUTOMATION_CONTRACTS.md)：面向 CI 和 agent 的版本化 JSON、JSONL、
+  plan/apply、schema 与退出码约定；
 - [变更记录](CHANGELOG.md)：版本级交付内容和已知限制。
 
 根目录中的 `Request.md`、`OPTIMISE.md` 和 `SUGGESTIONS.md` 是设计过程归档，
@@ -119,10 +153,16 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 
 ```sh
 cargo fmt -- --check
-cargo test
 cargo clippy --all-targets --all-features -- -D warnings
-cargo build --release
+cargo test --locked
+cargo build --locked --release
 ```
+
+## 参与项目
+
+提交变更前请阅读 [贡献指南](CONTRIBUTING.md)、[安全政策](SECURITY.md) 和
+[agent 协作约定](AGENTS.md)。对 multi-repository Git 操作进行自动化时，可使用仓库内
+未安装的 [batch-git automation skill](skills/batch-git-automation/SKILL.md)。
 
 ## 许可证
 

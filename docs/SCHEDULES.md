@@ -23,6 +23,18 @@ batch-git schedule register nightly-sync
 
 `register` 是幂等 upsert：配置未变时返回 `unchanged`，配置变化时更新同一个任务。
 
+面向 CI 或 agent 时，对任一 schedule 子命令使用全局协议，而非解析提示文字：
+
+```sh
+batch-git --output json schedule plan nightly-sync
+batch-git --output json schedule register nightly-sync --dry-run
+batch-git --output jsonl schedule run nightly-sync
+```
+
+新版 receipt 的 `command` 为 `schedule <action>`，并将旧 `schedule list --json` 和
+`schedule doctor --json` 的数组直接放在 `data` 中。原有子命令 `--json` 继续保持原形状。
+`--output json` 会静默原生 `launchctl`、`systemctl`、`schtasks.exe` 的输出，避免污染协议。
+
 ## 2. 创建声明
 
 每天本地时间执行：
@@ -84,6 +96,9 @@ batch-git schedule plan nightly-sync --json
 ```
 
 `plan` 只解析声明并展示实际仓库范围，不执行同步。
+
+不要将全局 Git 操作预览 `--plan` 与 `schedule plan` 混用。schedule 已有自己的 plan、doctor、
+generate 与 register/unregister `--dry-run`，因此 `batch-git --plan schedule …` 会拒绝执行。
 
 ## 4. 触发器语法
 
@@ -180,7 +195,10 @@ BATCH_GIT_SCHEDULE_LOG=false batch-git schedule register nightly-sync
 ```
 
 该变量在 `generate/register` 时读取并固化到原生定义。手动 `schedule run` 始终
-正常输出，不受此变量影响。
+正常输出，不受此变量影响。已注册的原生任务通过隐藏的 `schedule native-run` 入口启动时，
+无论外层输出模式都会向实际同步 child 强制传递 `--non-interactive`，避免无终端环境中的
+Git 提示；需要预先配置无交互认证方式。若以全局 `--apply` 调用该入口，child 会在获取
+工作区锁后再次核对 revision；此时发现的漂移仍作为 `stale_workspace_revision` 返回。
 
 ## 8. 反注册和删除
 

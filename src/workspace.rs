@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use fs2::FileExt;
+use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
 use crate::model::{LOCK_FILE, WORKSPACE_FILE, Workspace, now};
@@ -75,12 +76,14 @@ pub fn current_root() -> Result<PathBuf> {
 
 /// 查找工作区根目录，找不到时生成面向用户的错误。
 pub fn find_root() -> Result<PathBuf> {
-    find_root_optional()?.ok_or_else(|| {
-        anyhow::anyhow!(
+    let root = find_root_optional()?;
+    match root.filter(|root| root.join(WORKSPACE_FILE).is_file()) {
+        Some(root) => Ok(root),
+        None => bail!(
             "no {} found in current directory or its parents",
             WORKSPACE_FILE
-        )
-    })
+        ),
+    }
 }
 
 /// 优先使用环境变量，否则从当前目录逐层向父目录查找清单。
@@ -122,13 +125,25 @@ fn workspace_from_env() -> Result<Option<PathBuf>> {
 
 /// 读取、反序列化并完整校验工作区清单。
 pub fn read(root: &Path) -> Result<Workspace> {
+    Ok(read_with_revision(root)?.0)
+}
+
+/// Read and validate a manifest together with the SHA-256 digest of the exact bytes parsed.
+///
+/// Plan generation uses this snapshot to ensure its selected repositories and advertised
+/// revision describe one coherent manifest version even if another process writes afterward.
+pub fn read_with_revision(root: &Path) -> Result<(Workspace, String)> {
     let path = root.join(WORKSPACE_FILE);
-    let content =
-        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let bytes = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    let revision = revision_from_bytes(&bytes);
+    let content = String::from_utf8(bytes)
+        .with_context(|| format!("failed to decode {} as UTF-8", path.display()))?;
     let workspace: Workspace =
         toml::from_str(&content).with_context(|| format!("failed to parse {}", path.display()))?;
-    workspace.validate()?;
-    Ok(workspace)
+    workspace
+        .validate()
+        .with_context(|| format!("failed to validate {}", path.display()))?;
+    Ok((workspace, revision))
 }
 
 /// 读取现有清单；文件不存在时创建内存中的空工作区。
@@ -138,6 +153,27 @@ pub fn read_or_new(root: &Path) -> Result<Workspace> {
     } else {
         Ok(Workspace::new())
     }
+}
+
+/// Return a stable digest of the current manifest bytes for plan/apply preconditions.
+pub fn revision(root: &Path) -> Result<String> {
+    let path = root.join(WORKSPACE_FILE);
+    let content = fs::read(&path).with_context(|| format!("failed to read {}", path.display()))?;
+    Ok(revision_from_bytes(&content))
+}
+
+fn revision_from_bytes(content: &[u8]) -> String {
+    let digest = Sha256::digest(content);
+    format!("sha256:{digest:x}")
+}
+
+/// Reject an apply operation when the manifest changed after its plan was generated.
+pub fn verify_revision(root: &Path, expected: &str) -> Result<()> {
+    let actual = revision(root)?;
+    if actual != expected {
+        bail!("workspace revision changed; expected {expected}, found {actual}");
+    }
+    Ok(())
 }
 
 /// 更新时间、稳定排序并通过临时文件原子替换清单。

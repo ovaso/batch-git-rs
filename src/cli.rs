@@ -6,6 +6,8 @@ use std::path::PathBuf;
 use anyhow::{Result, bail};
 use clap::{Args, Parser, Subcommand};
 
+use crate::automation::{self, AutomationOptions, OutputFormat};
+
 /// 在识别 Git 透传边界前允许出现的全局运行参数。
 #[derive(Debug, Clone, Default)]
 pub struct RuntimeOptions {
@@ -13,6 +15,35 @@ pub struct RuntimeOptions {
     pub jobs: Option<usize>,
     /// 是否显示成功子进程的输出。
     pub verbose: bool,
+    /// 新版机器输出协议。
+    pub output: OutputFormat,
+    /// 调用方用于关联日志和 receipt 的不透明标识。
+    pub request_id: Option<String>,
+    /// 禁止 Git 请求交互输入。
+    pub non_interactive: bool,
+    /// 子 Git 进程最长运行时间。
+    pub timeout: Option<std::time::Duration>,
+    /// 仅输出操作计划。
+    pub plan: bool,
+    /// 按计划前置条件执行操作。
+    pub apply: bool,
+    /// apply 必须匹配的 workspace.toml digest。
+    pub expected_workspace_revision: Option<String>,
+}
+
+impl RuntimeOptions {
+    /// 提取与输出和子进程执行有关的共享配置。
+    pub fn automation(&self) -> AutomationOptions {
+        AutomationOptions {
+            output: self.output,
+            request_id: self.request_id.clone(),
+            non_interactive: self.non_interactive,
+            timeout: self.timeout,
+            plan: self.plan,
+            apply: self.apply,
+            expected_workspace_revision: self.expected_workspace_revision.clone(),
+        }
+    }
 }
 
 /// 一次调用要么进入内建命令解析器，要么原样透传给 Git。
@@ -47,6 +78,51 @@ pub fn parse_invocation(args: Vec<OsString>) -> Result<Invocation> {
         } else if let Some(raw) = value.strip_prefix("--jobs=") {
             options.jobs = Some(parse_jobs(&OsString::from(raw))?);
             index += 1;
+        } else if value == "--output" {
+            let Some(raw) = args.get(index + 1) else {
+                bail!("--output requires a value");
+            };
+            options.output = parse_output(&raw.to_string_lossy())?;
+            index += 2;
+        } else if let Some(raw) = value.strip_prefix("--output=") {
+            options.output = parse_output(raw)?;
+            index += 1;
+        } else if value == "--request-id" {
+            let Some(raw) = args.get(index + 1) else {
+                bail!("--request-id requires a value");
+            };
+            options.request_id = Some(raw.to_string_lossy().into_owned());
+            index += 2;
+        } else if let Some(raw) = value.strip_prefix("--request-id=") {
+            options.request_id = Some(raw.to_owned());
+            index += 1;
+        } else if value == "--timeout" {
+            let Some(raw) = args.get(index + 1) else {
+                bail!("--timeout requires a value");
+            };
+            options.timeout = Some(automation::parse_timeout(&raw.to_string_lossy())?);
+            index += 2;
+        } else if let Some(raw) = value.strip_prefix("--timeout=") {
+            options.timeout = Some(automation::parse_timeout(raw)?);
+            index += 1;
+        } else if value == "--non-interactive" {
+            options.non_interactive = true;
+            index += 1;
+        } else if value == "--plan" {
+            options.plan = true;
+            index += 1;
+        } else if value == "--apply" {
+            options.apply = true;
+            index += 1;
+        } else if value == "--expect-workspace-revision" {
+            let Some(raw) = args.get(index + 1) else {
+                bail!("--expect-workspace-revision requires a value");
+            };
+            options.expected_workspace_revision = Some(raw.to_string_lossy().into_owned());
+            index += 2;
+        } else if let Some(raw) = value.strip_prefix("--expect-workspace-revision=") {
+            options.expected_workspace_revision = Some(raw.to_owned());
+            index += 1;
         } else {
             break;
         }
@@ -65,6 +141,111 @@ pub fn parse_invocation(args: Vec<OsString>) -> Result<Invocation> {
     }
 
     Ok(Invocation::BuiltIn(args))
+}
+
+/// Best-effort global option scan used to render an early parse failure as JSON.
+pub fn preflight_options(args: &[OsString]) -> AutomationOptions {
+    let mut options = AutomationOptions::default();
+    let mut index = 1;
+    while index < args.len() {
+        let value = args[index].to_string_lossy();
+        if value == "--" {
+            break;
+        }
+        if value == "--output" {
+            if let Some(raw) = args.get(index + 1)
+                && let Ok(output) = parse_output(&raw.to_string_lossy())
+            {
+                options.output = output;
+            }
+            index += 2;
+            continue;
+        }
+        if let Some(raw) = value.strip_prefix("--output=") {
+            if let Ok(output) = parse_output(raw) {
+                options.output = output;
+            }
+        } else if value == "--request-id" {
+            if let Some(raw) = args.get(index + 1) {
+                options.request_id = Some(raw.to_string_lossy().into_owned());
+            }
+            index += 2;
+            continue;
+        } else if let Some(raw) = value.strip_prefix("--request-id=") {
+            options.request_id = Some(raw.to_owned());
+        }
+        index += 1;
+    }
+    options
+}
+
+/// Guess the built-in command for a structured top-level error without touching passthrough args.
+pub fn preflight_command(args: &[OsString]) -> Option<String> {
+    let mut skip_next = false;
+    let mut schedule = false;
+    for value in args.iter().skip(1) {
+        let value = value.to_string_lossy();
+        if value == "--" {
+            return Some("passthrough".to_owned());
+        }
+        if skip_next {
+            skip_next = false;
+            continue;
+        }
+        if matches!(
+            value.as_ref(),
+            "--jobs" | "--output" | "--request-id" | "--timeout" | "--expect-workspace-revision"
+        ) {
+            skip_next = true;
+            continue;
+        }
+        if value.starts_with("--") {
+            continue;
+        }
+        if schedule {
+            return Some(format!("schedule {}", canonical_schedule_action(&value)));
+        }
+        let command = canonical_command(&value);
+        if command == "schedule" {
+            schedule = true;
+            continue;
+        }
+        return Some(command.to_owned());
+    }
+    schedule.then_some("schedule".to_owned())
+}
+
+fn canonical_command(command: &str) -> &str {
+    match command {
+        "b" => "branch",
+        "cc" | "cd" | "cf" => "checkout",
+        "fd" | "f" => "find",
+        "i" => "info",
+        "ls" | "l" => "list",
+        "m" => "merge",
+        "s" => "status",
+        other => other,
+    }
+}
+
+fn canonical_schedule_action(action: &str) -> &str {
+    match action {
+        "create" => "add",
+        "install" => "register",
+        "delete" => "remove",
+        "uninstall" => "unregister",
+        "edit" => "update",
+        other => other,
+    }
+}
+
+fn parse_output(raw: &str) -> Result<OutputFormat> {
+    match raw {
+        "text" => Ok(OutputFormat::Text),
+        "json" => Ok(OutputFormat::Json),
+        "jsonl" => Ok(OutputFormat::Jsonl),
+        _ => bail!("invalid output format: {raw}; expected text, json, or jsonl"),
+    }
 }
 
 /// 解析透传模式中的 `--jobs`，并提前拒绝零并发。
@@ -96,6 +277,39 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub verbose: bool,
 
+    /// Render the versioned automation protocol as text, JSON, or JSON Lines.
+    #[arg(long, global = true, value_enum)]
+    pub output: Option<OutputFormat>,
+
+    /// Opaque identifier echoed by machine-readable receipts and events.
+    #[arg(long, global = true)]
+    pub request_id: Option<String>,
+
+    /// Disable Git prompts and interactive child-process input.
+    #[arg(long, global = true)]
+    pub non_interactive: bool,
+
+    /// Limit each child Git process, using a duration such as 30s, 5m, or 1h.
+    #[arg(long, global = true)]
+    pub timeout: Option<String>,
+
+    /// Resolve a no-side-effect plan instead of executing the command.
+    #[arg(long, global = true, conflicts_with = "apply")]
+    pub plan: bool,
+
+    /// Execute only when --expect-workspace-revision still matches the planned workspace.
+    #[arg(
+        long,
+        global = true,
+        requires = "expect_workspace_revision",
+        conflicts_with = "plan"
+    )]
+    pub apply: bool,
+
+    /// Manifest digest returned by a previous --plan response.
+    #[arg(long, global = true, requires = "apply")]
+    pub expect_workspace_revision: Option<String>,
+
     #[command(subcommand)]
     pub command: Command,
 }
@@ -105,7 +319,9 @@ pub struct Cli {
 pub enum Command {
     /// Show the current branch of every registered repository.
     #[command(visible_alias = "b")]
-    Branch,
+    Branch(MachineReadableArgs),
+    /// Show supported automation protocol features and command names.
+    Capabilities,
     /// Checkout each repository's declared default branch.
     Cd,
     /// Checkout the branch named by CURRENT_FEATURE_BRANCH.
@@ -143,11 +359,89 @@ pub enum Command {
     Scan(ScanArgs),
     /// Manage scheduled workspace synchronization.
     Schedule(ScheduleArgs),
+    /// Print a versioned JSON Schema for an automation document.
+    Schema(SchemaArgs),
     /// Show a compact status summary for every registered repository.
     #[command(visible_alias = "s")]
-    Status,
+    Status(MachineReadableArgs),
     /// Restore missing repositories and fetch remote refs without changing worktrees.
     Sync(SyncArgs),
+}
+
+impl Cli {
+    /// Resolve global execution options after clap has validated the syntax.
+    pub fn runtime_options(&self) -> Result<RuntimeOptions> {
+        let options = RuntimeOptions {
+            jobs: self.jobs,
+            verbose: self.verbose,
+            output: self.output.unwrap_or(OutputFormat::Text),
+            request_id: self.request_id.clone(),
+            non_interactive: self.non_interactive,
+            timeout: self
+                .timeout
+                .as_deref()
+                .map(automation::parse_timeout)
+                .transpose()?,
+            plan: self.plan,
+            apply: self.apply,
+            expected_workspace_revision: self.expect_workspace_revision.clone(),
+        };
+        options.automation().validate()?;
+        Ok(options)
+    }
+}
+
+impl Command {
+    /// Identify commands that can write the manifest, repositories, remotes, or scheduler state.
+    pub fn is_mutating(&self) -> bool {
+        match self {
+            Self::Branch(_)
+            | Self::Capabilities
+            | Self::Find(_)
+            | Self::Info(_)
+            | Self::List(_)
+            | Self::Schema(_)
+            | Self::Status(_) => false,
+            Self::Schedule(arguments) => arguments.command.is_mutating(),
+            Self::Clone(_)
+            | Self::Cd
+            | Self::Cf
+            | Self::Checkout(_)
+            | Self::Exec(_)
+            | Self::Fetch
+            | Self::Forget(_)
+            | Self::Merge(_)
+            | Self::Pull(_)
+            | Self::Push(_)
+            | Self::Restore
+            | Self::Scan(_)
+            | Self::Sync(_) => true,
+        }
+    }
+}
+
+/// Optional legacy `--json` switch for read-only commands that did not previously expose it.
+#[derive(Debug, Args, Default)]
+pub struct MachineReadableArgs {
+    /// Emit the legacy structured JSON payload. Prefer global --output json for new integrations.
+    #[arg(long)]
+    pub json: bool,
+}
+
+/// A stable protocol document that can be discovered from the executable itself.
+#[derive(Debug, Args)]
+pub struct SchemaArgs {
+    #[arg(value_enum)]
+    pub document: SchemaDocument,
+}
+
+/// JSON Schema documents published by the executable.
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum SchemaDocument {
+    /// The v1 machine-output envelope used by --output json.
+    OperationResult,
+    /// The persisted workspace.toml data model expressed as JSON Schema.
+    Workspace,
 }
 
 /// 受控 clone 的参数集合。
@@ -251,6 +545,15 @@ pub enum ScheduleCommand {
     /// Update an existing schedule declaration.
     #[command(visible_alias = "edit")]
     Update(ScheduleUpdateArgs),
+}
+
+impl ScheduleCommand {
+    fn is_mutating(&self) -> bool {
+        !matches!(
+            self,
+            Self::Doctor(_) | Self::Generate(_) | Self::List(_) | Self::Plan(_) | Self::Status(_)
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]

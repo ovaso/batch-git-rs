@@ -64,6 +64,15 @@ all = true
 - 会执行 Git 或修改清单的进程使用 `.workspace.lock`；
 - 程序会规范化 TOML 格式，不保证保留手写注释和原始排版。
 
+`schedules` 可以整体省略，等同于空列表。手写 schedule 时也可省略有默认值的 `enabled`、
+`action`、`timezone` 和 `overlap`；`schema workspace` 输出的 schema 对应这种输入形式，而不是要求
+写入程序序列化时会补齐的默认字段。
+
+当使用 `batch-git --output json --plan …` 时，receipt 中的 `workspace.revision` 是当前
+`workspace.toml` 原始字节的 `sha256:<hex>` 摘要。将它只作为紧随其后的
+`--apply --expect-workspace-revision` 前置条件，不要写回清单或把它当作 schema 字段。apply
+会在持锁后重新计算摘要；注释或空白的任何改动也会使该摘要失效。
+
 因此，注释不应承载业务含义。手工编辑后建议先运行只读命令校验：
 
 ```sh

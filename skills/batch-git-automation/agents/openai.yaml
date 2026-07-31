@@ -1,0 +1,4 @@
+interface:
+  display_name: "Batch Git Automation"
+  short_description: "Safely automate multi-repository Git workspaces"
+  default_prompt: "Use $batch-git-automation to inspect this workspace and safely plan the requested multi-repository Git operation."

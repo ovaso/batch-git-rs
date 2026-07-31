@@ -1,7 +1,8 @@
 # batch-git 用户手册
 
 本文面向日常使用者。清单字段见 [WORKSPACE.md](WORKSPACE.md)，定时任务的完整
-操作说明见 [SCHEDULES.md](SCHEDULES.md)。
+操作说明见 [SCHEDULES.md](SCHEDULES.md)。面向 CI 与 agent 的字段契约见
+[AUTOMATION_CONTRACTS.md](AUTOMATION_CONTRACTS.md)。
 
 ## 1. 基本概念
 
@@ -75,6 +76,8 @@ batch-git clone -b develop --depth 10 --single-branch \
 克隆成功后才会写入清单。目标目录必须是工作区内的相对路径且不能已经存在。
 `batch-git clone` 是系统 `git clone` 的受控代理：上述选项会映射到原生 Git，
 认证、credential helper、SSH 配置和代理设置也沿用用户现有的 Git 配置。
+若 clone 失败或超时，目标目录会保留供人工检查，工具不会递归删除其中可能由并发进程写入的内容；
+清理或重命名该目录后才能重试同一目标，且它不会被自动登记到清单。
 
 ### 3.3 从清单恢复
 
@@ -85,7 +88,8 @@ batch-git fetch
 ```
 
 `restore` 只恢复缺失仓库；已有仓库不会被覆盖。初始克隆默认分支，随后可用
-`fetch` 获取完整的远端引用。
+`fetch` 获取完整的远端引用。恢复中的 clone 失败或超时时也会保留目标目录，避免自动删除
+可能已被其他进程写入的内容；人工检查并处理该目录后才能重试恢复。
 
 ## 4. 查看工作区
 
@@ -93,7 +97,9 @@ batch-git fetch
 batch-git list
 batch-git list --json
 batch-git branch
+batch-git branch --json
 batch-git status
+batch-git status --json
 batch-git info
 batch-git info service-api
 batch-git info services/service-api --json
@@ -110,7 +116,10 @@ batch-git info services/service-api --json
 batch-git -- status --short
 ```
 
-`info`、`list --json`、`find --json` 和 schedule 的 JSON 输出适合脚本使用。
+旧的 `info`、`list --json`、`find --json`、`status --json`、`branch --json` 和 schedule
+JSON 输出适合已有脚本。新自动化使用统一的全局协议，例如
+`batch-git --output json status`；它不会输出表格或进度条，并会包含协议版本、退出码、
+工作区 revision 和结构化错误。详见[自动化契约](AUTOMATION_CONTRACTS.md)。
 HTTP(S) 远端 URL 中的用户名、密码或 token 会在保存和展示前移除。
 
 ## 5. 更新仓库
@@ -270,6 +279,12 @@ batch-git --jobs 1 exec service-api -- rebase -i HEAD~3
 单任务透传会把标准输入、输出和错误流直接交给 Git。透传
 `git commit` 遇到明确的 “nothing to commit” 时记为 `skipped`，不会导致聚合失败。
 
+无人值守时传入 `--non-interactive`，它关闭 stdin 并设置 `GIT_TERMINAL_PROMPT=0`；使用
+`--timeout 30s`、`5m` 或 `1h` 为每个系统 Git 子进程设定上限。`--output json` 和
+`--output jsonl` 自动采用非交互子进程策略，确保结构化 stdout 不会被 Git 提示污染。
+timeout 只终止直接启动的 Git 子进程，不能保证结束其再派生的认证、传输或 helper 进程；
+收到 timeout 后仍应检查相关远端或本地目录，不要假设所有后续工作已经停止。
+
 ## 8. 登记管理
 
 ```sh
@@ -286,6 +301,36 @@ batch-git forget services/legacy
 
 交互终端中的 clone、restore 和 fetch 会显示动态进度；重定向或 CI 中自动退化为
 稳定表格。设置 `NO_COLOR`、`TERM=dumb`，或将输出接入管道时，不输出颜色控制码。
+
+### 9.1 可编程输出、plan 与 apply
+
+```sh
+batch-git --output json capabilities
+batch-git --output json --request-id build-17 sync --match 'service-*'
+batch-git --output jsonl fetch
+
+# 复制 receipt.workspace.revision 到下一条命令。
+batch-git --output json --plan pull service-api
+batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull service-api
+```
+
+`--output json` 每次只输出一个 v1 receipt；`--output jsonl` 每行输出一个事件，仓库事件按
+清单顺序而非完成时间输出。单仓库 `clone` 同样发送一个 `repository_finished` 事件，失败时以
+请求的目标目录标识该结果。`--plan` 不做写入或网络访问，列出实际范围、风险与预期副作用；`--apply` 在执行前核对
+`workspace.toml` revision。该核对不能锁定远端或工作树状态，因此仍应把 Git 的执行期
+检查和仓库级结果当作最终事实。schedule 有独立的 `schedule plan`、`doctor`、`generate` 和
+`--dry-run` 流程。
+
+用以下命令从当前二进制发现契约，而非猜测安装版本：
+
+```sh
+batch-git --output json capabilities
+batch-git schema operation-result
+batch-git --output json schema workspace
+```
+
+`schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 输入表示；`repositories`、
+`schedules` 和 schedule 的默认字段可以省略，不必先将默认值补齐。
 
 ## 10. 退出码
 
@@ -339,3 +384,7 @@ batch-git push -u --remote origin
 
 会执行 Git 或写入清单的进程使用 `.workspace.lock` 串行化。检查是否已有
 batch-git 任务或设置为 `queue` 的定时任务正在运行。
+
+`--timeout` 只限制已经启动的直接 Git 子进程，不限制等待 `.workspace.lock` 的时间，也不能
+保证结束 Git 再派生的认证、传输或 helper 进程。若需要避免等待锁，应由调用方设置自己的
+整体进程超时或在调用前协调任务。

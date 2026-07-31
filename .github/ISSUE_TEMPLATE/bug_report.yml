@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible batch-git defect
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not include credentials, private repository URLs, tokens, or security vulnerabilities.
+  - type: input
+    id: version
+    attributes:
+      label: batch-git version
+      placeholder: batch-git 0.2.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Git version
+      placeholder: macOS 15; git 2.50.1
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized commands, expected behavior, actual behavior, and exit code.
+    validations:
+      required: true

@@ -2,10 +2,12 @@
 
 use std::ffi::{OsStr, OsString};
 use std::fs;
-use std::io::{self, BufRead, BufReader, IsTerminal};
+use std::io::{self, BufRead, BufReader, IsTerminal, Read};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use git2::build::CheckoutBuilder;
@@ -37,6 +39,29 @@ pub struct GitOutput {
     pub code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+}
+
+/// 执行系统 Git 时可由调用方统一控制的交互与时间边界。
+///
+/// `non_interactive` 优先于 `allow_stdin`：启用后会关闭标准输入并禁止 Git 的终端
+/// 凭据提示。`timeout` 仅约束本次 Git 子进程；超时后会终止并回收直接子进程。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct GitExecutionOptions {
+    pub allow_stdin: bool,
+    pub non_interactive: bool,
+    pub timeout: Option<Duration>,
+}
+
+impl GitExecutionOptions {
+    /// 从旧调用点的单个 `allow_stdin` 参数构造兼容选项。
+    #[allow(dead_code)] // Compatibility wrappers below remain useful to in-module callers.
+    pub const fn legacy(allow_stdin: bool) -> Self {
+        Self {
+            allow_stdin,
+            non_interactive: false,
+            timeout: None,
+        }
+    }
 }
 
 /// 扫描仓库时写入清单的稳定 Git 元数据。
@@ -125,6 +150,7 @@ pub struct CloneOptions<'a> {
     pub depth: Option<usize>,
     pub single_branch: bool,
     pub progress: Option<CloneProgress>,
+    #[allow(dead_code)] // Read by the legacy clone_repository wrapper.
     pub allow_stdin: bool,
 }
 
@@ -202,7 +228,27 @@ pub struct RepositoryStatusSummary {
 }
 
 /// 在指定仓库运行系统 Git，并根据托管模式隔离调用方的路由环境变量。
+#[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
 pub fn run<I, S>(directory: &Path, args: I, managed: bool, allow_stdin: bool) -> Result<GitOutput>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    run_with_options(
+        directory,
+        args,
+        managed,
+        GitExecutionOptions::legacy(allow_stdin),
+    )
+}
+
+/// 在指定仓库运行系统 Git，并使用显式的自动化执行选项。
+pub fn run_with_options<I, S>(
+    directory: &Path,
+    args: I,
+    managed: bool,
+    options: GitExecutionOptions,
+) -> Result<GitOutput>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -219,14 +265,16 @@ where
             command.env_remove(variable);
         }
     }
-    if !allow_stdin {
-        command.stdin(Stdio::null());
-    }
-    if allow_stdin && !managed && terminal_is_interactive() {
+    configure_execution_options(&mut command, options);
+
+    if may_use_full_terminal(options, managed) {
         // 单任务交互透传直接继承终端，支持编辑器、密码提示和 rebase -i。
-        let status = command
-            .status()
-            .with_context(|| format!("failed to execute Git in {}", directory.display()))?;
+        let status = match options.timeout {
+            Some(timeout) => status_with_timeout(&mut command, timeout, "Git command")?,
+            None => command
+                .status()
+                .with_context(|| format!("failed to execute Git in {}", directory.display()))?,
+        };
         return Ok(GitOutput {
             success: status.success(),
             code: status.code(),
@@ -234,12 +282,21 @@ where
             stderr: String::new(),
         });
     }
-    if allow_stdin && managed && io::stderr().is_terminal() {
+
+    // 非交互/机器模式绝不继承子进程 stderr，避免它破坏调用方的结构化 stdout/stderr 边界。
+    let inherit_stderr =
+        options.allow_stdin && !options.non_interactive && managed && io::stderr().is_terminal();
+    if inherit_stderr {
         command.stderr(Stdio::inherit());
     }
-    let output = command
-        .output()
-        .with_context(|| format!("failed to execute Git in {}", directory.display()))?;
+    let output = match options.timeout {
+        Some(timeout) => {
+            output_with_timeout(&mut command, timeout, !inherit_stderr, "Git command")?
+        }
+        None => command
+            .output()
+            .with_context(|| format!("failed to execute Git in {}", directory.display()))?,
+    };
     Ok(GitOutput {
         success: output.status.success(),
         code: output.status.code(),
@@ -253,18 +310,64 @@ fn terminal_is_interactive() -> bool {
     io::stdin().is_terminal() && io::stdout().is_terminal() && io::stderr().is_terminal()
 }
 
+/// 将自动化执行约束应用到一个即将启动的 Git 子进程。
+fn configure_execution_options(command: &mut Command, options: GitExecutionOptions) {
+    if options.non_interactive {
+        // Git 的 credential helper 可能仍可工作，但绝不能等待终端输入。
+        command.stdin(Stdio::null()).env("GIT_TERMINAL_PROMPT", "0");
+    } else if !options.allow_stdin {
+        command.stdin(Stdio::null());
+    }
+}
+
+/// 是否允许沿用旧 API 的完全交互式终端透传行为。
+fn may_use_full_terminal(options: GitExecutionOptions, managed: bool) -> bool {
+    options.allow_stdin && !options.non_interactive && !managed && terminal_is_interactive()
+}
+
 /// 接受不可假定为 UTF-8 的原始参数并调用通用 Git 执行器。
+#[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
 pub fn run_os(
     directory: &Path,
     args: &[OsString],
     managed: bool,
     allow_stdin: bool,
 ) -> Result<GitOutput> {
-    run(directory, args, managed, allow_stdin)
+    run_os_with_options(
+        directory,
+        args,
+        managed,
+        GitExecutionOptions::legacy(allow_stdin),
+    )
+}
+
+/// 接受原始参数并使用显式的自动化执行选项调用 Git。
+pub fn run_os_with_options(
+    directory: &Path,
+    args: &[OsString],
+    managed: bool,
+    options: GitExecutionOptions,
+) -> Result<GitOutput> {
+    run_with_options(directory, args, managed, options)
 }
 
 /// 使用系统 Git 克隆仓库，以继承用户的认证、代理和 credential helper 配置。
+#[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
 pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> Result<()> {
+    let execution = GitExecutionOptions::legacy(options.allow_stdin);
+    clone_repository_with_options(url, target, options, execution)
+}
+
+/// 使用系统 Git 克隆仓库，并使用显式的自动化执行选项控制交互与超时。
+///
+/// `CloneOptions::allow_stdin` 仅为旧 API 保留；调用此函数时以 `execution.allow_stdin`
+/// 为准。
+pub fn clone_repository_with_options(
+    url: &str,
+    target: &Path,
+    options: CloneOptions<'_>,
+    execution: GitExecutionOptions,
+) -> Result<()> {
     let mut command = Command::new("git");
     command.arg("clone").args(["--origin", options.remote_name]);
     if let Some(branch) = options.branch {
@@ -282,59 +385,212 @@ pub fn clone_repository(url: &str, target: &Path, options: CloneOptions<'_>) -> 
     for variable in ROUTING_ENVIRONMENT {
         command.env_remove(variable);
     }
-    if !options.allow_stdin {
-        command.stdin(Stdio::null());
-    }
+    execute_clone_command(&mut command, url, options.progress, execution)
+}
 
-    if let Some(progress) = options.progress {
+/// 在已构造的 clone 命令上应用执行策略；保留为独立函数以便测试超时与脱敏行为。
+fn execute_clone_command(
+    command: &mut Command,
+    url: &str,
+    progress: Option<CloneProgress>,
+    execution: GitExecutionOptions,
+) -> Result<()> {
+    configure_execution_options(command, execution);
+
+    if let Some(progress) = progress {
         command.stdout(Stdio::null()).stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .with_context(|| format!("failed to execute Git clone for {url}"))?;
-        let stderr = child
-            .stderr
-            .take()
-            .context("failed to capture Git clone progress")?;
-        let mut message = Vec::new();
-        for chunk in BufReader::new(stderr).split(b'\r') {
-            let chunk = chunk.context("failed to read Git clone progress")?;
-            message.extend_from_slice(&chunk);
-            message.push(b'\n');
-            if let Some((received, total)) = clone_progress_counts(&chunk) {
-                progress(received, total);
-            }
-        }
-        let status = child.wait().context("failed to wait for Git clone")?;
-        if !status.success() {
-            bail!(
-                "Git clone failed with {status}: {}",
-                String::from_utf8_lossy(&message).trim()
-            );
-        }
-        return Ok(());
+        return run_clone_with_progress(command, url, progress, execution);
     }
 
-    if options.allow_stdin && terminal_is_interactive() {
-        let status = command
-            .status()
-            .with_context(|| format!("failed to execute Git clone for {url}"))?;
-        if !status.success() {
-            bail!("Git clone failed with {status}");
-        }
-        return Ok(());
+    if execution.allow_stdin && !execution.non_interactive && terminal_is_interactive() {
+        let status = match execution.timeout {
+            Some(timeout) => status_with_timeout(command, timeout, "Git clone")?,
+            None => command
+                .status()
+                .with_context(|| format!("failed to execute Git clone for {url}"))?,
+        };
+        return ensure_clone_succeeded(status, &[], execution.non_interactive);
     }
 
-    let output = command
-        .output()
+    let output = match execution.timeout {
+        Some(timeout) => output_with_timeout(command, timeout, true, "Git clone")?,
+        None => command
+            .output()
+            .with_context(|| format!("failed to execute Git clone for {url}"))?,
+    };
+    ensure_clone_succeeded(output.status, &output.stderr, execution.non_interactive)
+}
+
+/// 运行带进度回调的 clone；超时时在等待主线程终止子进程后回收输出读取线程。
+fn run_clone_with_progress(
+    command: &mut Command,
+    url: &str,
+    progress: CloneProgress,
+    execution: GitExecutionOptions,
+) -> Result<()> {
+    let mut child = command
+        .spawn()
         .with_context(|| format!("failed to execute Git clone for {url}"))?;
-    if !output.status.success() {
-        bail!(
-            "Git clone failed with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        );
+    let stderr = child
+        .stderr
+        .take()
+        .context("failed to capture Git clone progress")?;
+
+    match execution.timeout {
+        None => {
+            let message = read_clone_progress(stderr, &progress)?;
+            let status = child.wait().context("failed to wait for Git clone")?;
+            ensure_clone_succeeded(status, &message, execution.non_interactive)
+        }
+        Some(timeout) => {
+            let reader = thread::spawn(move || read_clone_progress(stderr, &progress));
+            let (status, timed_out) = wait_for_child_with_timeout(&mut child, timeout)?;
+            if timed_out {
+                // A Git transport helper can outlive the direct child and retain its stderr
+                // pipe. Do not wait for that helper through the reader thread: the caller's
+                // timeout must bound this invocation even though it cannot kill descendants on
+                // every platform.
+                drop(reader);
+                bail!("{}", timeout_message("Git clone", timeout));
+            }
+            let message = join_reader(reader, "failed to read Git clone progress");
+            ensure_clone_succeeded(status, &message?, execution.non_interactive)
+        }
     }
-    Ok(())
+}
+
+/// 收集 clone stderr 的进度行，并保留失败时可供人类诊断的文本。
+fn read_clone_progress<R: Read>(reader: R, progress: &CloneProgress) -> Result<Vec<u8>> {
+    let mut message = Vec::new();
+    for chunk in BufReader::new(reader).split(b'\r') {
+        let chunk = chunk.context("failed to read Git clone progress")?;
+        message.extend_from_slice(&chunk);
+        message.push(b'\n');
+        if let Some((received, total)) = clone_progress_counts(&chunk) {
+            progress(received, total);
+        }
+    }
+    Ok(message)
+}
+
+/// 将 clone 的失败文本限制在人类交互模式，避免机器模式转发子进程输出。
+fn ensure_clone_succeeded(status: ExitStatus, stderr: &[u8], non_interactive: bool) -> Result<()> {
+    if status.success() {
+        return Ok(());
+    }
+    if non_interactive || stderr.is_empty() {
+        bail!("Git clone failed with {status}");
+    }
+    bail!(
+        "Git clone failed with {status}: {}",
+        String::from_utf8_lossy(stderr).trim()
+    )
+}
+
+/// 在保留调用方标准流的情况下执行子进程，并在超时后终止直接子进程。
+fn status_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+    operation: &str,
+) -> Result<ExitStatus> {
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to execute {operation}"))?;
+    let (status, timed_out) = wait_for_child_with_timeout(&mut child, timeout)?;
+    if timed_out {
+        bail!("{}", timeout_message(operation, timeout));
+    }
+    Ok(status)
+}
+
+/// 捕获子进程输出并在超时后终止子进程；读取线程避免大量 Git 输出造成管道死锁。
+fn output_with_timeout(
+    command: &mut Command,
+    timeout: Duration,
+    capture_stderr: bool,
+    operation: &str,
+) -> Result<Output> {
+    command.stdout(Stdio::piped());
+    if capture_stderr {
+        command.stderr(Stdio::piped());
+    }
+    let mut child = command
+        .spawn()
+        .with_context(|| format!("failed to execute {operation}"))?;
+    let stdout = child.stdout.take().map(spawn_output_reader);
+    let stderr = child.stderr.take().map(spawn_output_reader);
+    let (status, timed_out) = wait_for_child_with_timeout(&mut child, timeout)?;
+    if timed_out {
+        // Child helpers may inherit either pipe after the direct Git process has been reaped.
+        // Waiting for the drain threads would turn a per-child timeout into an unbounded wait.
+        // Dropping their JoinHandles detaches them; they retain no protocol output and will end
+        // when the inherited pipe closes.
+        drop(stdout);
+        drop(stderr);
+        bail!("{}", timeout_message(operation, timeout));
+    }
+    let stdout = stdout
+        .map(|reader| join_reader(reader, "failed to read Git stdout"))
+        .transpose();
+    let stderr = stderr
+        .map(|reader| join_reader(reader, "failed to read Git stderr"))
+        .transpose();
+    Ok(Output {
+        status,
+        stdout: stdout?.unwrap_or_default(),
+        stderr: stderr?.unwrap_or_default(),
+    })
+}
+
+/// 在后台持续排空一个子进程输出流，避免子进程因填满 pipe 而无法退出。
+fn spawn_output_reader<R: Read + Send + 'static>(reader: R) -> thread::JoinHandle<Result<Vec<u8>>> {
+    thread::spawn(move || {
+        let mut reader = reader;
+        let mut output = Vec::new();
+        reader
+            .read_to_end(&mut output)
+            .context("failed to read Git child output")?;
+        Ok(output)
+    })
+}
+
+/// 将子进程输出读取线程的 panic 转换为普通错误，避免让 CLI 线程 panic。
+fn join_reader<T>(reader: thread::JoinHandle<Result<T>>, label: &str) -> Result<T> {
+    reader
+        .join()
+        .map_err(|_| anyhow::anyhow!("{label}: reader thread panicked"))?
+}
+
+/// 轮询等待子进程；超时后 kill 并 wait，确保子进程不会成为僵尸进程。
+fn wait_for_child_with_timeout(child: &mut Child, timeout: Duration) -> Result<(ExitStatus, bool)> {
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("failed to poll Git child process")?
+        {
+            return Ok((status, false));
+        }
+        if started.elapsed() >= timeout {
+            // 进程可能刚好在 try_wait 和 kill 之间退出；此时仍可通过 wait 回收状态。
+            if let Err(error) = child.kill()
+                && error.kind() != io::ErrorKind::InvalidInput
+            {
+                return Err(error).context("failed to terminate timed out Git child process");
+            }
+            let status = child
+                .wait()
+                .context("failed to wait for timed out Git child process")?;
+            return Ok((status, true));
+        }
+        let remaining = timeout.checked_sub(started.elapsed()).unwrap_or_default();
+        thread::sleep(remaining.min(Duration::from_millis(10)));
+    }
+}
+
+/// 生成不含子进程输出的稳定超时错误文本。
+fn timeout_message(operation: &str, timeout: Duration) -> String {
+    format!("{operation} timed out after {} ms", timeout.as_millis())
 }
 
 /// 从 Git stderr 进度行中提取“当前/总数”，无法识别时返回 None。
@@ -346,8 +602,14 @@ fn clone_progress_counts(message: &[u8]) -> Option<(usize, usize)> {
 }
 
 /// fetch 所有远端并清理已删除的 remote-tracking 引用。
+#[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
 pub fn fetch_all(path: &Path, allow_stdin: bool) -> Result<GitOutput> {
-    run(path, ["fetch", "--all", "--prune"], true, allow_stdin)
+    fetch_all_with_options(path, GitExecutionOptions::legacy(allow_stdin))
+}
+
+/// fetch 所有远端并使用显式的自动化执行选项。
+pub fn fetch_all_with_options(path: &Path, options: GitExecutionOptions) -> Result<GitOutput> {
+    run_with_options(path, ["fetch", "--all", "--prune"], true, options)
 }
 
 /// 安全切换到已经存在的本地分支。
@@ -1094,9 +1356,66 @@ pub fn display_remote_url(raw: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsStr;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
+
     use crate::model::{RemoteRecord, RepositoryRecord, now};
 
-    use super::{configure_declared_remotes, display_remote_url};
+    use super::{
+        GitExecutionOptions, configure_declared_remotes, configure_execution_options,
+        display_remote_url, execute_clone_command, wait_for_child_with_timeout,
+    };
+
+    #[test]
+    fn non_interactive_execution_disables_terminal_prompts() {
+        let mut command = Command::new("git");
+        configure_execution_options(
+            &mut command,
+            GitExecutionOptions {
+                allow_stdin: true,
+                non_interactive: true,
+                timeout: None,
+            },
+        );
+        let prompt = command
+            .get_envs()
+            .find(|(name, _)| *name == OsStr::new("GIT_TERMINAL_PROMPT"))
+            .and_then(|(_, value)| value.map(|value| value.to_string_lossy().into_owned()));
+        assert_eq!(prompt.as_deref(), Some("0"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_terminates_and_reaps_child() {
+        let mut child = Command::new("sh").args(["-c", "sleep 2"]).spawn().unwrap();
+        let started = Instant::now();
+        let (_, timed_out) =
+            wait_for_child_with_timeout(&mut child, Duration::from_millis(20)).unwrap();
+        assert!(timed_out);
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn non_interactive_clone_timeout_does_not_expose_child_output() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "echo machine-secret >&2; sleep 2"]);
+        let error = execute_clone_command(
+            &mut command,
+            "test://clone",
+            None,
+            GitExecutionOptions {
+                allow_stdin: false,
+                non_interactive: true,
+                timeout: Some(Duration::from_millis(20)),
+            },
+        )
+        .unwrap_err();
+        let rendered = format!("{error:#}");
+        assert!(rendered.contains("timed out"));
+        assert!(!rendered.contains("machine-secret"));
+    }
 
     #[test]
     fn display_remote_url_removes_http_credentials() {
