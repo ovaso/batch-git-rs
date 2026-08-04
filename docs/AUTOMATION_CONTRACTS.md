@@ -136,6 +136,14 @@ batch-git --output json --apply \
 plan 的 `data` 包含 `mode=plan`、已解析仓库范围、风险、预期副作用、并发数和
 `workspace_revision`。它不会写清单、修改仓库、访问远端或注册调度器。
 
+`merge` plan 的每个 `selection.repositories[]` 还包含 `source_branch`、`source_mode` 和
+`remote_fallback`。`source_mode` 为 `explicit`、`feature_environment` 或
+`workspace_default`；最后一种模式按仓库读取清单中的 `default_branch`，因此不同仓库可以显示
+不同来源。`remote_fallback` 只是本地同名分支不存在时的远端解析范围，不表示 plan 已读取或
+锁定该远端引用；`merge --default` 使用各仓库的 `primary_remote`，普通 merge 未指定远端时为
+`null`。对 `workspace_default`，apply 的 workspace revision 前置条件会防止清单中的分支或主远端
+在 plan 后静默漂移；显式参数和环境变量仍须由调用方在 apply 时保持一致。
+
 apply 在获取工作区锁后、执行 Git 前重新核对 `workspace.toml` 字节摘要。它防止清单在
 plan 与执行之间漂移，但**不**保留远端状态，也不重验 HEAD / dirty 状态；Git 的正常安全
 检查仍在执行时进行。批量操作始终是逐仓库完成，不提供跨仓库事务回滚。
@@ -189,4 +197,5 @@ Git 参数判断为安全或无副作用。
 2. 写操作前后用 `status --output json`、`branch --output json` 或 `find --output json` 盘点。
 3. 对有副作用的 Git/清单操作先 `--plan`；对 push / schedule 使用各自 `--dry-run`。
 4. 以每仓库 `status`、`reason_code` 和退出码分别报告 success、skipped 与 failed。
-5. 未经明确授权，不要实际 push、merge、注册/反注册调度器，或通过透传绕过安全边界。
+5. 未经明确授权，不要实际 push、merge、注册/反注册调度器，或通过透传绕过安全边界；使用
+   `merge --default` 时应逐仓库审阅 plan 中的 `source_branch`。

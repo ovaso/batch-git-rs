@@ -10,7 +10,7 @@ body:
     id: version
     attributes:
       label: batch-git version
-      placeholder: batch-git 0.2.0
+      placeholder: batch-git 0.3.0
     validations:
       required: true
   - type: input

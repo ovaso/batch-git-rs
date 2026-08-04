@@ -5,6 +5,31 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-04
+
+### Added
+
+- 新增 `batch-git merge --default`（短参数 `-d`），逐仓库读取 `workspace.toml` 的
+  `default_branch` 并合入各自当前分支；支持多级复杂分支名，本地分支不存在时固定回退到该仓库
+  的 `primary_remote`，且不会隐式 fetch；
+- merge plan 为每个仓库新增 `source_branch`、`source_mode` 和 `remote_fallback`，便于在
+  apply 前审阅显式分支、环境特性分支或逐仓库默认分支来源。
+
+### Fixed
+
+- 普通 `merge` 现在正确读取已文档化的 `BATCH_GIT_REMOTE`，可在多个远端存在同名源分支时按
+  环境配置消歧。
+
+### Security
+
+- 升级 `git2` 至 `0.21.0`，修复 RUSTSEC-2026-0183 与 RUSTSEC-2026-0184 报告的潜在未定义
+  行为；网络操作仍统一由系统 Git 执行，`git2` 保持禁用默认网络特性。
+
+### Validation
+
+- 新增 CLI 与 automation protocol 黑盒回归，覆盖不同复杂默认分支、主远端回退、多远端消歧、
+  参数冲突和无副作用 plan；`cargo-deny` 的 advisories、bans、licenses、sources 检查通过。
+
 ## [0.2.0] - 2026-07-31
 
 ### Added
@@ -105,7 +130,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/livenv/batch-git/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/livenv/batch-git/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/livenv/batch-git/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/livenv/batch-git/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/livenv/batch-git/releases/tag/v0.1.0

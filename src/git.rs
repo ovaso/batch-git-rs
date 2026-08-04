@@ -809,17 +809,17 @@ pub fn inspect(path: &Path) -> Result<RepositoryInfo> {
     }
     let mut remotes = Vec::new();
     let names = repository.remotes().context("failed to list remotes")?;
-    for name in names.iter().flatten() {
+    for name in names.iter().filter_map(|name| name.ok().flatten()) {
         let remote = repository
             .find_remote(name)
             .with_context(|| format!("failed to read remote {name}"))?;
-        let Some(url) = remote.url() else {
+        let Ok(url) = remote.url() else {
             continue;
         };
         remotes.push(RemoteRecord {
             name: name.to_owned(),
             fetch_url: portable_remote_url(url),
-            push_url: remote.pushurl().map(portable_remote_url),
+            push_url: remote.pushurl().ok().flatten().map(portable_remote_url),
         });
     }
     remotes.sort_by(|a, b| a.name.cmp(&b.name));
@@ -898,7 +898,7 @@ pub fn repository_runtime_info(path: &Path) -> RepositoryRuntimeInfo {
         Err(_) => return unavailable_runtime(RepositoryRuntimeState::Error),
     };
     let current_branch = if head.is_branch() {
-        head.shorthand().map(str::to_owned)
+        head.shorthand().ok().map(str::to_owned)
     } else {
         head.target().map(|oid| {
             format!(
@@ -935,7 +935,9 @@ fn branch_count(repository: &Repository, branch_type: BranchType) -> Option<usiz
     let mut count = 0;
     for result in branches {
         let (branch, actual_type) = result.ok()?;
-        if actual_type == BranchType::Remote && branch.get().symbolic_target().is_some() {
+        if actual_type == BranchType::Remote
+            && branch.get().symbolic_target().ok().flatten().is_some()
+        {
             continue;
         }
         count += 1;
@@ -954,7 +956,7 @@ pub fn branches(
     let current_reference = repository
         .head()
         .ok()
-        .and_then(|head| head.name().map(str::to_owned));
+        .and_then(|head| head.name().ok().map(str::to_owned));
     let mut summaries = Vec::new();
     if include_local {
         collect_branches(
@@ -998,7 +1000,8 @@ fn collect_branches(
     for branch_result in branches {
         let (branch, actual_type) = branch_result.context("failed to inspect branch")?;
         let reference = branch.get();
-        if actual_type == BranchType::Remote && reference.symbolic_target().is_some() {
+        if actual_type == BranchType::Remote && reference.symbolic_target().ok().flatten().is_some()
+        {
             continue;
         }
         let Some(full_name) = branch.name().context("branch name is not UTF-8")? else {
@@ -1027,7 +1030,7 @@ fn collect_branches(
             is_current: actual_type == BranchType::Local
                 && reference
                     .name()
-                    .is_some_and(|name| Some(name) == current_reference),
+                    .is_ok_and(|name| Some(name) == current_reference),
             commit_short: commit_id.chars().take(8).collect(),
             commit: commit_id,
             commit_time: commit.time().seconds(),
@@ -1092,7 +1095,7 @@ fn upstream_summary(repository: &Repository) -> Result<UpstreamSummary> {
     if !head.is_branch() {
         return Ok(UpstreamSummary::None);
     }
-    let Some(branch_name) = head.shorthand() else {
+    let Ok(branch_name) = head.shorthand() else {
         return Ok(UpstreamSummary::None);
     };
     let branch = repository
@@ -1194,7 +1197,7 @@ fn remote_url(path: &Path, remote_name: &str) -> Result<Option<String>> {
     let repository = Repository::open(path)
         .with_context(|| format!("failed to open Git repository {}", path.display()))?;
     match repository.find_remote(remote_name) {
-        Ok(remote) => Ok(remote.url().map(portable_remote_url)),
+        Ok(remote) => Ok(remote.url().ok().map(portable_remote_url)),
         Err(error) if error.code() == git2::ErrorCode::NotFound => Ok(None),
         Err(error) => Err(error.into()),
     }
@@ -1254,6 +1257,8 @@ pub fn configure_declared_remotes(
             .find_remote(&remote.name)
             .with_context(|| format!("failed to read remote {}", remote.name))?
             .pushurl()
+            .ok()
+            .flatten()
             .is_some();
         if push_url.is_some() || has_push_url {
             git_repository
@@ -1313,7 +1318,7 @@ fn discover_below(
 fn detect_default_branch(repository: &Repository, primary_remote: &str) -> String {
     let remote_head = format!("refs/remotes/{primary_remote}/HEAD");
     if let Ok(reference) = repository.find_reference(&remote_head)
-        && let Some(target) = reference.symbolic_target()
+        && let Ok(Some(target)) = reference.symbolic_target()
         && let Some(branch) = target.strip_prefix(&format!("refs/remotes/{primary_remote}/"))
     {
         return branch.to_owned();
@@ -1328,7 +1333,7 @@ fn detect_default_branch(repository: &Repository, primary_remote: &str) -> Strin
     }
     if let Ok(head) = repository.head()
         && head.is_branch()
-        && let Some(branch) = head.shorthand()
+        && let Ok(branch) = head.shorthand()
     {
         return branch.to_owned();
     }
@@ -1461,13 +1466,14 @@ mod tests {
                 .find_remote("origin")
                 .unwrap()
                 .pushurl()
+                .unwrap()
                 .is_none()
         );
 
         record.remotes[0].push_url = Some("https://example.com/push.git".to_owned());
         configure_declared_remotes(directory.path(), &record, false).unwrap();
         assert_eq!(
-            repository.find_remote("origin").unwrap().pushurl(),
+            repository.find_remote("origin").unwrap().pushurl().unwrap(),
             Some("https://example.com/push.git")
         );
     }

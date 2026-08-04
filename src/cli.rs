@@ -346,7 +346,7 @@ pub enum Command {
     /// List registered repositories.
     #[command(visible_aliases = ["ls", "l"])]
     List(ListArgs),
-    /// Merge a branch into the current branch wherever it exists.
+    /// Merge a source branch into each repository's current branch.
     #[command(visible_alias = "m")]
     Merge(MergeArgs),
     /// Fast-forward the current tracking branch in selected repositories.
@@ -816,15 +816,22 @@ pub struct MergeArgs {
     pub no_update_current: bool,
 
     /// Select a remote when several contain the same source branch.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "default")]
     pub remote: Option<String>,
 
+    /// Merge each repository's declared default branch into its current branch.
+    #[arg(short = 'd', long)]
+    pub default: bool,
+
     /// Merge the branch named by CURRENT_FEATURE_BRANCH.
-    #[arg(long, conflicts_with = "branch")]
+    #[arg(long, conflicts_with_all = ["branch", "default"])]
     pub feature: bool,
 
-    /// Branch to merge into the current branch.
-    #[arg(required_unless_present = "feature")]
+    /// Source branch to merge into each repository's current branch.
+    #[arg(
+        required_unless_present_any = ["default", "feature"],
+        conflicts_with_all = ["default", "feature"]
+    )]
     pub branch: Option<String>,
 }
 

@@ -215,13 +215,13 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
                 "working_tree",
             )
         }
-        Command::Merge(_) => {
+        Command::Merge(arguments) => {
             let manifest = manifest
                 .as_ref()
                 .expect("merge requires a workspace manifest");
             (
                 "merge",
-                plan_selection(&manifest.repositories),
+                plan_merge_selection(&manifest.repositories, arguments)?,
                 vec!["working_trees", "local_refs", "workspace_manifest"],
                 "working_tree",
             )
@@ -412,6 +412,55 @@ fn plan_selection(records: &[RepositoryRecord]) -> Vec<serde_json::Value> {
         .collect()
 }
 
+/// Resolve the per-repository merge source without touching Git state or the network.
+fn plan_merge_selection(
+    records: &[RepositoryRecord],
+    arguments: &MergeArgs,
+) -> Result<Vec<serde_json::Value>> {
+    let feature_branch = if arguments.feature {
+        settings::current_feature_branch()?
+    } else {
+        None
+    };
+    let shared_branch = arguments.branch.as_deref().or(feature_branch.as_deref());
+    let selected_remote = if arguments.default {
+        None
+    } else {
+        settings::checkout_remote(arguments.remote.clone())
+    };
+    let source_mode = if arguments.default {
+        "workspace_default"
+    } else if arguments.feature {
+        "feature_environment"
+    } else {
+        "explicit"
+    };
+
+    Ok(records
+        .iter()
+        .map(|record| {
+            let source_branch = if arguments.default {
+                record.default_branch.as_str()
+            } else {
+                shared_branch.expect("clap requires a branch, --feature, or --default")
+            };
+            let source_remote = if arguments.default {
+                Some(record.primary_remote.as_str())
+            } else {
+                selected_remote.as_deref()
+            };
+            json!({
+                "name": record.name,
+                "directory": record.directory,
+                "default_branch": record.default_branch,
+                "source_branch": source_branch,
+                "source_mode": source_mode,
+                "remote_fallback": source_remote,
+            })
+        })
+        .collect())
+}
+
 /// The operation-specific portion of a no-side-effect plan.
 struct PlanSpec {
     operation: &'static str,
@@ -457,11 +506,15 @@ fn render_plan(
             &data,
         )?;
     } else {
+        let show_merge_source = plan
+            .repositories
+            .iter()
+            .any(|repository| repository.get("source_branch").is_some());
         let rows = plan
             .repositories
             .iter()
             .map(|repository| {
-                vec![
+                let mut row = vec![
                     repository
                         .get("name")
                         .or_else(|| repository.get("source"))
@@ -473,7 +526,17 @@ fn render_plan(
                         .and_then(serde_json::Value::as_str)
                         .unwrap_or("-")
                         .to_owned(),
-                ]
+                ];
+                if show_merge_source {
+                    row.push(
+                        repository
+                            .get("source_branch")
+                            .and_then(serde_json::Value::as_str)
+                            .unwrap_or("-")
+                            .to_owned(),
+                    );
+                }
+                row
             })
             .collect::<Vec<_>>();
         if rows.is_empty() {
@@ -482,7 +545,12 @@ fn render_plan(
                 plan.operation
             );
         } else {
-            print!("{}", table::render(&["REPOSITORY", "DIRECTORY"], &rows));
+            let headers = if show_merge_source {
+                vec!["REPOSITORY", "DIRECTORY", "SOURCE"]
+            } else {
+                vec!["REPOSITORY", "DIRECTORY"]
+            };
+            print!("{}", table::render(&headers, &rows));
         }
         println!(
             "plan: {}; risk: {}; side effects: {}",
@@ -1838,7 +1906,15 @@ fn merge(
     verbose: bool,
     automation: &AutomationOptions,
 ) -> Result<i32> {
-    let feature_branch = if arguments.feature {
+    let MergeArgs {
+        update_current,
+        no_update_current,
+        remote,
+        default,
+        feature,
+        branch,
+    } = arguments;
+    let feature_branch = if feature {
         match settings::current_feature_branch()? {
             Some(branch) => Some(branch),
             None => return feature_branch_unset(automation, "merge"),
@@ -1846,18 +1922,19 @@ fn merge(
     } else {
         None
     };
-    let branch = arguments
-        .branch
-        .as_deref()
-        .or(feature_branch.as_deref())
-        .expect("clap requires a branch or --feature");
+    let shared_branch = branch.as_deref().or(feature_branch.as_deref());
+    let selected_remote = if default {
+        None
+    } else {
+        settings::checkout_remote(remote)
+    };
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;
     verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
-    let update_current = settings::merge_update_current(if arguments.update_current {
+    let update_current = settings::merge_update_current(if update_current {
         Some(true)
-    } else if arguments.no_update_current {
+    } else if no_update_current {
         Some(false)
     } else {
         None
@@ -1869,6 +1946,11 @@ fn merge(
         "merge",
         &root,
         |repository| {
+            let branch = if default {
+                repository.default_branch.as_str()
+            } else {
+                shared_branch.expect("clap requires a branch, --feature, or --default")
+            };
             let path = root.join(&repository.directory);
             if !git::is_repository(&path) {
                 return RepositoryResult::failed(
@@ -1910,7 +1992,12 @@ fn merge(
                 }
             }
 
-            let source = match git::checkout_target(&path, branch, arguments.remote.as_deref()) {
+            let remote = if default {
+                Some(repository.primary_remote.as_str())
+            } else {
+                selected_remote.as_deref()
+            };
+            let source = match git::checkout_target(&path, branch, remote) {
                 Ok(CheckoutTarget::Local) => branch.to_owned(),
                 Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
                 Ok(CheckoutTarget::Missing) => {

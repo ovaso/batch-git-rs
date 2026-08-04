@@ -206,6 +206,22 @@ fn invalid_automation_options_are_structured_as_invalid_arguments() {
             &["--output", "json", "--plan", "schedule", "list"],
             "schedule list",
         ),
+        (&["--output", "json", "merge", "--default", "main"], "merge"),
+        (
+            &["--output", "json", "merge", "--default", "--feature"],
+            "merge",
+        ),
+        (
+            &[
+                "--output",
+                "json",
+                "merge",
+                "--default",
+                "--remote",
+                "origin",
+            ],
+            "merge",
+        ),
     ];
 
     for (arguments, command) in cases {
@@ -337,6 +353,42 @@ fn plan_sync_returns_a_workspace_revision_without_rewriting_the_manifest() {
         fs::read(&manifest_path).expect("read manifest after plan"),
         before,
         "planning must not rewrite workspace.toml"
+    );
+}
+
+#[test]
+fn merge_default_plan_exposes_each_declared_source_without_rewriting_the_manifest() {
+    let fixture = WorkspaceFixture::new();
+    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .expect("read manifest")
+        .replace(
+            "default_branch = \"main\"",
+            "default_branch = \"release/2026.08/customer-a\"",
+        );
+    fs::write(&manifest_path, manifest).expect("write complex default branch");
+    let before = fs::read(&manifest_path).expect("read manifest before merge plan");
+
+    let receipt = json_output(run(
+        &fixture.workspace,
+        &["--output", "json", "--plan", "merge", "--default"],
+    ));
+    assert_success_receipt(&receipt, "merge");
+    assert_workspace_revision(&receipt);
+    assert_eq!(receipt["data"]["mode"], "plan");
+    assert_eq!(receipt["data"]["risk"], "working_tree");
+    assert_eq!(
+        receipt["data"]["workspace_revision"],
+        receipt["workspace"]["revision"]
+    );
+    let source = &receipt["data"]["selection"]["repositories"][0];
+    assert_eq!(source["source_branch"], "release/2026.08/customer-a");
+    assert_eq!(source["source_mode"], "workspace_default");
+    assert_eq!(source["remote_fallback"], "origin");
+    assert_eq!(
+        fs::read(&manifest_path).expect("read manifest after merge plan"),
+        before,
+        "merge planning must not rewrite workspace.toml"
     );
 }
 

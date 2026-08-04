@@ -601,6 +601,173 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
 }
 
 #[test]
+fn merge_default_uses_each_declared_complex_branch_and_primary_remote() {
+    let first_fixture = Fixture::new("service-default-one");
+    let second_fixture = Fixture::new("service-default-two");
+    let workspace = tempfile::tempdir().unwrap();
+    git(
+        workspace.path(),
+        [
+            "clone",
+            first_fixture.remote.to_str().unwrap(),
+            "service-default-one",
+        ],
+    );
+    git(
+        workspace.path(),
+        [
+            "clone",
+            second_fixture.remote.to_str().unwrap(),
+            "service-default-two",
+        ],
+    );
+    batch_git(workspace.path())
+        .args(["scan"])
+        .assert()
+        .success();
+
+    let cases = [
+        (
+            &first_fixture,
+            "service-default-one",
+            "release/2026.08/customer-a",
+            "DEFAULT_ONE.md",
+        ),
+        (
+            &second_fixture,
+            "service-default-two",
+            "platform/stable/v2",
+            "DEFAULT_TWO.md",
+        ),
+    ];
+    for (fixture, name, default_branch, marker) in cases {
+        let repository = workspace.path().join(name);
+        git(&repository, ["config", "user.name", "Batch Git Tests"]);
+        git(
+            &repository,
+            ["config", "user.email", "batch-git@example.invalid"],
+        );
+        git(&repository, ["checkout", "-b", default_branch]);
+        fs::write(repository.join(marker), format!("{default_branch}\n")).unwrap();
+        git(&repository, ["add", marker]);
+        git(&repository, ["commit", "-m", "complex default branch"]);
+        git(&repository, ["push", "-u", "origin", default_branch]);
+        git(
+            &repository,
+            ["checkout", "-b", "feature/consume-default", "main"],
+        );
+        git(&repository, ["branch", "-D", default_branch]);
+        git(
+            &repository,
+            ["remote", "add", "backup", fixture.remote.to_str().unwrap()],
+        );
+        git(&repository, ["fetch", "backup"]);
+        set_default_branch(workspace.path(), name, default_branch);
+    }
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_REMOTE", "missing-remote-must-be-ignored")
+        .args(["merge", "--default", "--no-update-current"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("service-default-one  ok"))
+        .stdout(predicate::str::contains("service-default-two  ok"))
+        .stdout(predicate::str::contains(
+            "summary: 2 ok, 0 skipped, 0 failed",
+        ));
+
+    let first = workspace.path().join("service-default-one");
+    let second = workspace.path().join("service-default-two");
+    for repository in [&first, &second] {
+        assert_eq!(
+            git_output(repository, ["branch", "--show-current"]),
+            "feature/consume-default"
+        );
+    }
+    assert!(first.join("DEFAULT_ONE.md").is_file());
+    assert!(!first.join("DEFAULT_TWO.md").exists());
+    assert!(second.join("DEFAULT_TWO.md").is_file());
+    assert!(!second.join("DEFAULT_ONE.md").exists());
+
+    batch_git(workspace.path())
+        .args(["checkout", "--default"])
+        .assert()
+        .success();
+    batch_git(workspace.path())
+        .args(["merge", "--default", "--update-current"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "summary: 0 ok, 2 skipped, 0 failed",
+        ));
+}
+
+#[test]
+fn merge_default_help_and_conflicts_are_explicit() {
+    let directory = tempfile::tempdir().unwrap();
+
+    batch_git(directory.path())
+        .args(["merge", "--help"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("-d, --default"))
+        .stdout(predicate::str::contains("declared default branch"));
+
+    for arguments in [
+        vec!["merge", "--default", "main"],
+        vec!["merge", "--default", "--feature"],
+        vec!["merge", "--default", "--remote", "origin"],
+    ] {
+        batch_git(directory.path())
+            .args(arguments)
+            .assert()
+            .code(2)
+            .stderr(
+                predicate::str::contains("--default")
+                    .and(predicate::str::contains("cannot be used with")),
+            );
+    }
+}
+
+#[test]
+fn merge_uses_batch_git_remote_to_disambiguate_non_default_sources() {
+    let fixture = Fixture::new("service-merge-remote");
+    let workspace = tempfile::tempdir().unwrap();
+    git(
+        workspace.path(),
+        [
+            "clone",
+            fixture.remote.to_str().unwrap(),
+            "service-merge-remote",
+        ],
+    );
+    let repository = workspace.path().join("service-merge-remote");
+    git(
+        &repository,
+        ["remote", "add", "backup", fixture.remote.to_str().unwrap()],
+    );
+    git(&repository, ["fetch", "backup"]);
+    batch_git(workspace.path())
+        .args(["scan"])
+        .assert()
+        .success();
+
+    batch_git(workspace.path())
+        .env_remove("BATCH_GIT_REMOTE")
+        .args(["merge", "feature"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("branch is ambiguous"));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_REMOTE", "origin")
+        .args(["merge", "feature"])
+        .assert()
+        .success();
+    assert!(repository.join("FEATURE.md").is_file());
+}
+
+#[test]
 fn merge_feature_without_an_environment_value_is_a_no_op() {
     let directory = tempfile::tempdir().unwrap();
 
@@ -1542,4 +1709,25 @@ fn git_ref_exists(git_directory: &Path, reference: &str) -> bool {
         .status()
         .expect("run git")
         .success()
+}
+
+fn set_default_branch(workspace: &Path, repository_name: &str, default_branch: &str) {
+    let manifest_path = workspace.join("workspace.toml");
+    let mut manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(&manifest_path).expect("read workspace manifest"))
+            .expect("parse workspace manifest");
+    let repositories = manifest
+        .get_mut("repositories")
+        .and_then(toml::Value::as_array_mut)
+        .expect("workspace manifest repositories");
+    let repository = repositories
+        .iter_mut()
+        .find(|record| record.get("name").and_then(toml::Value::as_str) == Some(repository_name))
+        .expect("registered repository");
+    repository["default_branch"] = toml::Value::String(default_branch.to_owned());
+    fs::write(
+        manifest_path,
+        toml::to_string_pretty(&manifest).expect("serialize workspace manifest"),
+    )
+    .expect("write workspace manifest");
 }

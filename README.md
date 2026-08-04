@@ -7,7 +7,7 @@
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
 `workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
-当前封版版本：`0.2.0`。
+当前封版版本：`0.3.0`。
 
 ## 主要能力
 
@@ -99,6 +99,7 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 | 推送当前 tracking 分支 | `batch-git push` |
 | 切换同名分支 | `batch-git checkout <branch>` |
 | 切换各仓库默认分支 | `batch-git cd` |
+| 将各仓库默认分支合入当前分支 | `batch-git merge --default` |
 | 搜索本地或远端分支 | `batch-git find 'feature/*'` |
 | 查看工作区或仓库详情 | `batch-git info [repository]` |
 | 管理定时任务 | `batch-git schedule --help` |

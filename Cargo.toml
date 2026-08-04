@@ -1,6 +1,6 @@
 [package]
 name = "batch-git"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 license = "MIT"
 description = "Safe, declarative management of workspaces containing multiple Git repositories"
@@ -30,7 +30,7 @@ chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 console = "0.16"
 fs2 = "0.4"
-git2 = { version = "0.20", default-features = false }
+git2 = { version = "0.21", default-features = false }
 indicatif = "0.18"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }

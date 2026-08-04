@@ -22,7 +22,8 @@ description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行
 3. 在任何本地、远端或调度器写入前后，用 `status --output json`、`branch --output json`，必要时
    `find '<pattern>' --output json` 盘点。分别记录 `ok`、`skipped` 和 `failed`。
 4. 对可写的 Git/清单操作先调用 `--output json --plan`，核对 `data.selection`、风险、预期副作用
-   和 `workspace.revision`。plan 不访问远端，也不是跨仓库事务。
+   和 `workspace.revision`。merge plan 还应逐仓库核对 `source_branch`、`source_mode` 和
+   `remote_fallback`。plan 不访问远端，也不是跨仓库事务。
 5. 只有用户明确授权实际变更时，才以同一精确命令加上
    `--apply --expect-workspace-revision <plan revision>` 执行。清单变更后必须重新 plan。
 6. 用新的 JSON receipt 和退出码报告结果；不要解析表格、颜色、`detail` 自然语言或 Git 原始输出。
@@ -76,8 +77,9 @@ clone 或 restore 失败/超时时，目标目录会保留供人工检查，不�
 ## 远端、分支与定时任务
 
 - 实际 `push` 前先运行 `push --dry-run`；只有明确授权时使用 `--set-upstream`，绝不 force push。
-- `checkout` 前检查工作树与分支；远端同名分支歧义必须传 `--remote`。`merge` 需要明确的源分支、
-  范围和授权；不要自动解决、abort 或继续冲突。
+- `checkout` 前检查工作树与分支；远端同名分支歧义必须传 `--remote`。`merge` 需要明确来源模式
+  （显式分支、`--feature` 或 `--default`）、范围和授权；`--default` 按仓库读取清单默认分支，
+  本地不存在时只回退到各自 `primary_remote`，且不会 fetch。不要自动解决、abort 或继续冲突。
 - schedule 使用其专用流程：`schedule plan` → `doctor` → `generate` 或 `register --dry-run` →
   明确授权后的 `register`。不要使用全局 `--plan schedule …`，该组合会被拒绝以避免语义混淆。
   `register`、`unregister`、`remove --unregister` 会改变原生调度器，必须单独得到授权。

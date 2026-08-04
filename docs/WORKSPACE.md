@@ -43,7 +43,7 @@ all = true
 |---|---|---|
 | `name` | 是 | 工作区内唯一的仓库名称 |
 | `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..` |
-| `default_branch` | 是 | `checkout --default` 使用的分支 |
+| `default_branch` | 是 | `checkout --default` 的目标分支，也是 `merge --default` 的源分支 |
 | `primary_remote` | 是 | 主远端名称，必须存在于 `remotes` 中；缺省按 `origin` 读取 |
 | `created_at` | 是 | RFC 3339 时间 |
 | `synced_at` | 否 | 最近一次成功同步时间 |
@@ -92,7 +92,7 @@ batch-git info
 | `BATCH_GIT_STATE_DIR` | 平台用户 state 目录 | schedule 注册状态和日志根目录 |
 | `BATCH_GIT_SCHEDULE_LOG` | `false` | 注册任务是否记录 stdout/stderr |
 | `BATCH_GIT_TZ` | 系统时区 | schedule 任务时区；设置后需重新 register，不允许空白字符 |
-| `BATCH_GIT_REMOTE` | 未设置 | checkout/merge 的远端消歧名称 |
+| `BATCH_GIT_REMOTE` | 未设置 | 普通 checkout/merge 的远端消歧名称；`--default` 固定使用各仓库的 `primary_remote` |
 | `CURRENT_FEATURE_BRANCH` | 未设置 | `checkout --feature` / `cf` 的目标分支，以及 `merge --feature` 的源分支 |
 | `BATCH_GIT_MERGE_UPDATE_CURRENT` | `false` | merge 前是否 ff-only 更新当前分支 |
 | `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | 全仓库 Git 透传是否展示成功输出 |
