@@ -317,6 +317,8 @@ pub struct Cli {
 /// 所有受 batch-git 约束和解释的内建命令。
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Stage all non-ignored additions, modifications, and deletions in selected repositories.
+    Add(SyncArgs),
     /// Show the current branch of every registered repository.
     #[command(visible_alias = "b")]
     Branch(MachineReadableArgs),
@@ -331,6 +333,8 @@ pub enum Command {
     Checkout(CheckoutArgs),
     /// Clone one repository and register it in workspace.toml.
     Clone(CloneArgs),
+    /// Commit already-staged changes without staging additional content.
+    Commit(CommitArgs),
     /// Run a Git command in selected repositories.
     Exec(ExecArgs),
     /// Fetch all remotes with pruning, without merging.
@@ -366,6 +370,8 @@ pub enum Command {
     Status(MachineReadableArgs),
     /// Restore missing repositories and fetch remote refs without changing worktrees.
     Sync(SyncArgs),
+    /// Remove all staged changes from selected indexes without changing working-tree files.
+    Unstage(SyncArgs),
 }
 
 impl Cli {
@@ -403,7 +409,9 @@ impl Command {
             | Self::Schema(_)
             | Self::Status(_) => false,
             Self::Schedule(arguments) => arguments.command.is_mutating(),
-            Self::Clone(_)
+            Self::Add(_)
+            | Self::Clone(_)
+            | Self::Commit(_)
             | Self::Cd
             | Self::Cf
             | Self::Checkout(_)
@@ -415,7 +423,8 @@ impl Command {
             | Self::Push(_)
             | Self::Restore
             | Self::Scan(_)
-            | Self::Sync(_) => true,
+            | Self::Sync(_)
+            | Self::Unstage(_) => true,
         }
     }
 }
@@ -506,6 +515,17 @@ pub struct PushArgs {
     /// Preview the push without updating the remote.
     #[arg(long)]
     pub dry_run: bool,
+}
+
+/// Commit the index of each selected repository with one shared message.
+#[derive(Debug, Args)]
+pub struct CommitArgs {
+    #[command(flatten)]
+    pub selection: SyncArgs,
+
+    /// Commit message used in every repository that has staged changes.
+    #[arg(short = 'm', long)]
+    pub message: String,
 }
 
 #[derive(Debug, Args)]

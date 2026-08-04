@@ -14,9 +14,9 @@ use serde_json::json;
 
 use crate::automation::{self, AutomationOptions};
 use crate::cli::{
-    CheckoutArgs, Cli, CloneArgs, Command, ExecArgs, FindArgs, ForgetArgs, InfoArgs, ListArgs,
-    MachineReadableArgs, MergeArgs, PushArgs, RuntimeOptions, ScanArgs, SchemaArgs, SchemaDocument,
-    SyncArgs,
+    CheckoutArgs, Cli, CloneArgs, Command, CommitArgs, ExecArgs, FindArgs, ForgetArgs, InfoArgs,
+    ListArgs, MachineReadableArgs, MergeArgs, PushArgs, RuntimeOptions, ScanArgs, SchemaArgs,
+    SchemaDocument, SyncArgs,
 };
 use crate::color;
 use crate::git::{
@@ -38,6 +38,9 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
     let runtime = cli.runtime_options()?;
     let jobs = settings::jobs(runtime.jobs)?;
     let automation = runtime.automation();
+    if let Command::Commit(arguments) = &cli.command {
+        validate_commit_message(&arguments.message)?;
+    }
     if automation.plan {
         return plan_command(&cli.command, jobs, &automation);
     }
@@ -45,7 +48,9 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
         bail!("--apply is only valid for an operation with side effects");
     }
     match cli.command {
+        Command::Add(arguments) => add(arguments, jobs, runtime.verbose, &automation),
         Command::Clone(arguments) => clone_repository(arguments, &automation),
+        Command::Commit(arguments) => commit(arguments, jobs, runtime.verbose, &automation),
         Command::Scan(arguments) => scan(arguments, jobs, &automation),
         Command::Restore => restore(jobs, runtime.verbose, &automation),
         Command::Fetch => fetch(jobs, runtime.verbose, &automation),
@@ -78,6 +83,7 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
         Command::Schema(arguments) => schema(arguments, &automation),
         Command::List(arguments) => list(arguments, jobs, &automation),
         Command::Forget(arguments) => forget(arguments, &automation),
+        Command::Unstage(arguments) => unstage(arguments, jobs, runtime.verbose, &automation),
     }
 }
 
@@ -122,6 +128,22 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
     }
 
     let (operation, selection, side_effects, risk) = match command {
+        Command::Add(arguments) => {
+            let manifest = manifest
+                .as_ref()
+                .expect("add requires a workspace manifest");
+            (
+                "add",
+                plan_selection(&crate::selector::select(
+                    manifest,
+                    &arguments.selectors,
+                    &arguments.matches,
+                    arguments.all,
+                )?),
+                vec!["git_indexes"],
+                "index",
+            )
+        }
         Command::Clone(arguments) => (
             "clone",
             plan_clone_selection(arguments, &root, manifest)?,
@@ -134,6 +156,22 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
             vec!["workspace_manifest"],
             "local_write",
         ),
+        Command::Commit(arguments) => {
+            let manifest = manifest
+                .as_ref()
+                .expect("commit requires a workspace manifest");
+            (
+                "commit",
+                plan_selection(&crate::selector::select(
+                    manifest,
+                    &arguments.selection.selectors,
+                    &arguments.selection.matches,
+                    arguments.selection.all,
+                )?),
+                vec!["git_objects", "local_refs", "git_indexes", "hooks"],
+                "local_history",
+            )
+        }
         Command::Restore => {
             let manifest = manifest
                 .as_ref()
@@ -253,6 +291,22 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
                 "metadata",
             )
         }
+        Command::Unstage(arguments) => {
+            let manifest = manifest
+                .as_ref()
+                .expect("unstage requires a workspace manifest");
+            (
+                "unstage",
+                plan_selection(&crate::selector::select(
+                    manifest,
+                    &arguments.selectors,
+                    &arguments.matches,
+                    arguments.all,
+                )?),
+                vec!["git_indexes"],
+                "index",
+            )
+        }
         Command::Branch(_)
         | Command::Capabilities
         | Command::Find(_)
@@ -263,12 +317,30 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
         | Command::Schedule(_) => unreachable!("non-mutating commands were rejected above"),
     };
 
+    let parameters = match command {
+        Command::Add(_) => Some(json!({
+            "scope": "all_working_tree_changes",
+            "includes": ["additions", "modifications", "deletions"],
+            "force_ignored": false,
+        })),
+        Command::Commit(arguments) => Some(json!({
+            "message": arguments.message.as_str(),
+            "stages_content": false,
+        })),
+        Command::Unstage(_) => Some(json!({
+            "scope": "all_staged_changes",
+            "preserves_working_tree": true,
+            "moves_head": false,
+        })),
+        _ => None,
+    };
     render_plan(
         PlanSpec {
             operation,
             repositories: selection,
             side_effects,
             risk,
+            parameters,
         },
         &root,
         jobs,
@@ -324,6 +396,7 @@ fn plan_passthrough(
             repositories: plan_selection(&manifest.repositories),
             side_effects: vec!["unclassified_git_command"],
             risk: "unclassified",
+            parameters: None,
         },
         root,
         jobs,
@@ -467,6 +540,7 @@ struct PlanSpec {
     repositories: Vec<serde_json::Value>,
     side_effects: Vec<&'static str>,
     risk: &'static str,
+    parameters: Option<serde_json::Value>,
 }
 
 /// Serialize or render the common plan payload. No caller of this function performs a write.
@@ -483,7 +557,7 @@ fn render_plan(
     } else {
         "No workspace.toml revision exists yet; request explicit approval, then run the operation without --apply."
     };
-    let data = json!({
+    let mut data = json!({
         "mode": "plan",
         "atomicity": "per_repository",
         "jobs": jobs,
@@ -496,6 +570,9 @@ fn render_plan(
             "note": apply_note
         }
     });
+    if let Some(parameters) = &plan.parameters {
+        data["parameters"] = parameters.clone();
+    }
     if automation.is_machine() {
         automation::emit_data_with_workspace_revision(
             automation,
@@ -558,6 +635,9 @@ fn render_plan(
             plan.risk,
             plan.side_effects.join(", ")
         );
+        if let Some(parameters) = &plan.parameters {
+            println!("parameters: {}", serde_json::to_string(parameters)?);
+        }
         match revision {
             Some(revision) => println!(
                 "apply: batch-git --apply --expect-workspace-revision {revision} {} …",
@@ -589,9 +669,10 @@ fn capabilities(automation: &AutomationOptions) -> Result<i32> {
         "output_formats": ["text", "json", "jsonl"],
         "schemas": ["operation-result", "workspace"],
         "commands": [
-            "branch", "capabilities", "checkout", "clone", "exec", "fetch", "find",
-            "forget", "info", "list", "merge", "pull", "push", "restore", "scan",
-            "schedule", "schema", "status", "sync", "passthrough"
+            "add", "branch", "capabilities", "checkout", "clone", "commit", "exec",
+            "fetch", "find", "forget", "info", "list", "merge", "pull", "push",
+            "restore", "scan", "schedule", "schema", "status", "sync", "unstage",
+            "passthrough"
         ],
         "automation": {
             "structured_top_level_errors": true,
@@ -608,6 +689,10 @@ fn capabilities(automation: &AutomationOptions) -> Result<i32> {
         "safety": {
             "atomicity": "per_repository",
             "implicit_merge_rebase_stash_reset_clean_force_push": false,
+            "commit_stages_content": false,
+            "add_rejects_unresolved_conflicts": true,
+            "commit_rejects_repository_operations": true,
+            "unstage_preserves_working_trees": true,
             "passthrough_risk": "unclassified"
         }
     });
@@ -1519,6 +1604,195 @@ pub(crate) fn run_sync_named(
         workspace::write(root, manifest)?;
     }
     crate::report::print_operation_summary(&results, verbose, automation, command, root)
+}
+
+/// Stage every tracked, untracked, and deleted path in the selected repositories.
+fn add(
+    arguments: SyncArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+) -> Result<i32> {
+    let execution = git_execution_options(automation, false);
+    run_selected_local_operation(
+        arguments,
+        jobs,
+        verbose,
+        automation,
+        "add",
+        |repository, path| {
+            let state = match git::staging_state(path) {
+                Ok(state) => state,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            if state.has_conflicts {
+                return RepositoryResult::failed(
+                    repository,
+                    "repository has unresolved conflicts; use exec with an explicit pathspec to stage resolutions",
+                );
+            }
+            if !state.has_worktree_changes {
+                return RepositoryResult::skipped(repository, "nothing to stage");
+            }
+            match git::run_with_options(path, ["add", "--all", "--", ":/"], true, execution) {
+                Ok(output) => RepositoryResult::from_git(
+                    repository,
+                    output,
+                    "all working-tree changes staged",
+                    false,
+                ),
+                Err(error) => RepositoryResult::failed(repository, error.to_string()),
+            }
+        },
+    )
+}
+
+/// Commit only content that was already present in each selected repository's index.
+fn commit(
+    arguments: CommitArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+) -> Result<i32> {
+    let CommitArgs { selection, message } = arguments;
+    let execution = git_execution_options(automation, jobs == 1);
+    run_selected_local_operation(
+        selection,
+        jobs,
+        verbose,
+        automation,
+        "commit",
+        move |repository, path| {
+            let branch = match git::current_branch_summary(path) {
+                Ok(branch) => branch,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            if branch.starts_with("(detached:") {
+                return RepositoryResult::failed(
+                    repository,
+                    "current HEAD is detached; checkout a local branch before committing",
+                );
+            }
+            let state = match git::staging_state(path) {
+                Ok(state) => state,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            if state.has_conflicts {
+                return RepositoryResult::failed(repository, "repository has unresolved conflicts");
+            }
+            match git::operation_in_progress(path) {
+                Ok(true) => {
+                    return RepositoryResult::failed(
+                        repository,
+                        "repository operation is in progress; use an explicit Git workflow to continue it",
+                    );
+                }
+                Ok(false) => {}
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            }
+            if !state.has_staged_changes {
+                return RepositoryResult::skipped(repository, "nothing to commit");
+            }
+            match git::run_with_options(path, ["commit", "-m", message.as_str()], true, execution) {
+                Ok(output) => RepositoryResult::from_git(
+                    repository,
+                    output,
+                    "committed staged changes",
+                    false,
+                ),
+                Err(error) => RepositoryResult::failed(repository, error.to_string()),
+            }
+        },
+    )
+}
+
+fn validate_commit_message(message: &str) -> Result<()> {
+    if message.trim().is_empty() {
+        bail!("commit message cannot be empty");
+    }
+    Ok(())
+}
+
+/// Restore each selected index to HEAD without updating any working-tree file.
+fn unstage(
+    arguments: SyncArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+) -> Result<i32> {
+    let execution = git_execution_options(automation, false);
+    run_selected_local_operation(
+        arguments,
+        jobs,
+        verbose,
+        automation,
+        "unstage",
+        |repository, path| {
+            let state = match git::staging_state(path) {
+                Ok(state) => state,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            if !state.has_staged_changes {
+                return RepositoryResult::skipped(repository, "nothing to unstage");
+            }
+            let head_is_unborn = match git::head_is_unborn(path) {
+                Ok(head_is_unborn) => head_is_unborn,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            let output = if head_is_unborn {
+                // `git restore --staged` requires HEAD. Emptying the unborn index has the same
+                // unstage-all result and leaves every working-tree file untouched.
+                git::run_with_options(path, ["read-tree", "--empty"], true, execution)
+            } else {
+                git::run_with_options(path, ["restore", "--staged", "--", ":/"], true, execution)
+            };
+            match output {
+                Ok(output) => RepositoryResult::from_git(
+                    repository,
+                    output,
+                    "staged changes removed; working tree preserved",
+                    false,
+                ),
+                Err(error) => RepositoryResult::failed(repository, error.to_string()),
+            }
+        },
+    )
+}
+
+/// Resolve one standard repository selection and execute an index/local-history operation.
+fn run_selected_local_operation<F>(
+    arguments: SyncArgs,
+    jobs: usize,
+    verbose: bool,
+    automation: &AutomationOptions,
+    command: &str,
+    operation: F,
+) -> Result<i32>
+where
+    F: Fn(&RepositoryRecord, &Path) -> RepositoryResult + Sync + Send,
+{
+    let root = workspace::find_root()?;
+    let _lock = WorkspaceLock::acquire(&root)?;
+    verify_apply_revision(&root, automation)?;
+    let manifest = workspace::read(&root)?;
+    let records = crate::selector::select(
+        &manifest,
+        &arguments.selectors,
+        &arguments.matches,
+        arguments.all,
+    )?;
+    let results =
+        map_repository_results(&records, jobs, automation, command, &root, |repository| {
+            let path = root.join(&repository.directory);
+            if !git::is_repository(&path) {
+                return RepositoryResult::failed(
+                    repository,
+                    "repository is not materialized; run sync or restore",
+                );
+            }
+            operation(repository, &path)
+        })?;
+    print_selected_results(&results, verbose, automation, command, &root)
 }
 
 /// 解析用户选择后执行安全的 fast-forward-only pull。

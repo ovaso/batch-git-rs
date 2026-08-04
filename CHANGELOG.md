@@ -5,6 +5,35 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-04
+
+### Added
+
+- 新增安全批量 `batch-git add`：复用名称、相对目录、`--match` 与 `--all` 选择器，省略选择器时
+  覆盖整个工作区；首版不接受文件 pathspec，固定暂存全部非忽略的新增、修改和删除，并拒绝
+  未解决冲突；
+- 新增 `batch-git commit -m <message>`：只提交既有 index，不隐式 add，不提供 amend、空提交
+  或 hook bypass；拒绝 detached HEAD、未解决冲突和进行中的 merge/rebase/cherry-pick/revert
+  等 Git operation；
+- 新增全量 `batch-git unstage`：只恢复选中仓库的 index、保留工作树且不移动 HEAD；unborn HEAD
+  使用 `git read-tree --empty` 安全清空暂存区；
+- add/commit/unstage 接入 v1 JSON / JSONL、plan/apply、capabilities 和稳定 reason code；plan
+  公开 `git_indexes`、`git_objects`、`local_refs`、`hooks` 等副作用及命令参数边界。
+
+### Fixed
+
+- `unstage` 使用结构化 HEAD 状态区分真正的 unborn 仓库与名为 `(unborn)` 的合法分支，避免在
+  后一种情况下错误清空整个 index。
+- `commit` 在 Git operation 同时存在未解决冲突时稳定返回 `unresolved_conflicts`，并继续为
+  已解决但尚未完成的 merge/rebase/cherry-pick/revert 返回
+  `repository_operation_in_progress`。
+
+### Security
+
+- commit 保留仓库既有 hook、身份和签名策略，不提供自动绕过选项；机器模式继续强制非交互。
+  hook、filter、签名超时或跨仓库失败不会触发 reset、amend、rebase 等自动回滚，调用方须检查
+  部分成功及可能已经更新的本地 ref。
+
 ## [0.3.0] - 2026-08-04
 
 ### Added
@@ -130,7 +159,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/livenv/batch-git/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/livenv/batch-git/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/livenv/batch-git/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/livenv/batch-git/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/livenv/batch-git/compare/v0.1.0...v0.1.1

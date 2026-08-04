@@ -1,6 +1,6 @@
 ---
 name: batch-git-automation
-description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行自动化开发与维护。用于发现 batch-git 能力、读取 workspace.toml 工作区状态、使用 JSON receipt 或 JSONL 编排批量 Git 操作、先 plan 再 apply、协调跨仓库分支/同步/推送，或管理定时同步；当用户提及 batch-git、多仓库 Git、workspace.toml、批量同步、agent/CI 自动化时使用。
+description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行自动化开发与维护。用于发现 batch-git 能力、读取 workspace.toml 工作区状态、使用 JSON receipt 或 JSONL 编排批量暂存、提交和 Git 操作、先 plan 再 apply、协调跨仓库分支/同步/推送，或管理定时同步；当用户提及 batch-git、多仓库 Git、workspace.toml、批量同步、agent/CI 自动化时使用。
 ---
 
 # Batch Git Automation
@@ -20,7 +20,8 @@ description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行
 2. 用 `batch-git --output json info` 和 `batch-git --output json list` 确认工作区根目录与规范
    仓库名。路径存在歧义时设置绝对 `BATCH_GIT_WORKSPACE`。
 3. 在任何本地、远端或调度器写入前后，用 `status --output json`、`branch --output json`，必要时
-   `find '<pattern>' --output json` 盘点。分别记录 `ok`、`skipped` 和 `failed`。
+   `find '<pattern>' --output json` 盘点。commit 前还要对精确仓库审阅 `git diff --cached`。
+   分别记录 `ok`、`skipped` 和 `failed`。
 4. 对可写的 Git/清单操作先调用 `--output json --plan`，核对 `data.selection`、风险、预期副作用
    和 `workspace.revision`。merge plan 还应逐仓库核对 `source_branch`、`source_mode` 和
    `remote_fallback`。plan 不访问远端，也不是跨仓库事务。
@@ -45,7 +46,8 @@ batch-git --output json --plan pull service-api
 batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull service-api
 ```
 
-- 对 `clone`、`restore`、`fetch`、`sync`、`pull` 等长任务，可使用 `--output jsonl`。逐行读取
+- 对 `clone`、`restore`、`add`、`commit`、`unstage`、`fetch`、`sync`、`pull` 等批量或长任务，
+  可使用 `--output jsonl`。逐行读取
   `started`、`repository_finished`、`finished`，以最终事件和进程退出码为结论。clone 失败时，
   单个仓库事件以请求的目标目录作为稳定标识。
   `started` 在仓库工作前出现；仓库事件按清单顺序而非完成时间输出：较晚的仓库可能已完成，
@@ -54,7 +56,8 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
   全局 `--output` 优先。
 - 机器模式隐式禁用 Git 终端交互。文本模式下无人值守时使用 `--non-interactive`；必要时加
   `--timeout 30s`、`5m` 或 `1h`。timeout 仅终止直接启动的系统 Git 子进程，不约束锁等待，
-  也不能保证结束其认证、传输或 helper 后代进程。
+  也不能保证结束其认证、传输、filter、hook 或签名后代进程。commit timeout 后本地 ref 可能
+  已经更新，必须重新检查 HEAD 和 index，不能盲目重试。
 - 使用 `status`、`reason_code`、`error.code` 和退出码决策。`detail` 与 `error.message` 仅用于
   人类诊断，未来可演进。
 
@@ -63,7 +66,8 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 精确名称或 workspace 相对目录是首选选择器；`--match` 与 `find --repo` 只支持区分大小写的
 `*` 通配符。先从 `list --output json` 复制规范名称，避免未验证的广泛 `--match '*'`。
 
-优先安全梯度：只读盘点 → `fetch` → `sync` → `pull` → `checkout` / `merge` / `push`。`sync`
+优先安全梯度：只读盘点 → `fetch` → `sync` → `add` / `unstage` → 审阅 staged diff → `commit` →
+`pull` → `checkout` / `merge` / `push`。`sync`
 适合无人值守：只恢复缺失仓库并更新远端引用，不改已有工作树。`pull` 只能 fast-forward，
 不会 stash、rebase、reset 或解决冲突。
 
@@ -73,6 +77,44 @@ clone 或 restore 失败/超时时，目标目录会保留供人工检查，不�
 `exec` 和顶层 `batch-git -- <git-args...>` 只能提供结构化结果外壳，风险为 `unclassified`。
 对这些逃生舱，默认只使用低风险只读 Git 命令；破坏性、历史改写或远端写入命令必须有用户针对
 精确仓库、精确参数和影响范围的明确授权。全局选项必须放在透传分隔符之前。
+
+## 暂存与本地提交
+
+- `add`、`commit`、`unstage` 接受规范仓库名、workspace 相对目录、可重复 `--match` 或
+  `--all`；省略选择器时默认整个工作区。首版不接受文件 pathspec。
+- `add` 暂存全部非忽略的新增、修改和删除，不 force 加入 ignored 文件，并拒绝未解决冲突。
+  `nothing_to_stage` 是正常跳过；需要按文件处理冲突时，只能在精确仓库中使用明确的原生 Git。
+- add 后先逐仓库审阅 `git diff --cached`，再运行 `commit -m <message>`。commit 只提交 index，
+  不 implicit add，不 amend，不创建空提交，也不绕过 hook；`nothing_to_commit` 是正常跳过。
+- commit 拒绝 detached HEAD、未解决冲突，以及进行中的 merge、rebase、cherry-pick、revert 等
+  Git operation。分别按 `detached_head`、`unresolved_conflicts` 和
+  `repository_operation_in_progress` 处理，不要用批量命令自动 continue 或 abort。
+- `unstage` 全量恢复 index，但保留全部工作树文件且不移动 HEAD。unborn HEAD 使用
+  `git read-tree --empty`；`nothing_to_unstage` 是正常跳过。它不能撤销已经创建的 commit。
+- commit 遵循每个仓库的身份、hook、`core.hooksPath` 和签名配置。需要交互时使用文本模式
+  `--jobs 1`；机器模式不会把 hook 或 Git 原始输出写进 receipt。批量部分成功不自动 reset、
+  amend、rebase 或回滚其他仓库的提交。
+- plan 中 add/unstage 的风险为 `index`、副作用为 `git_indexes`；commit 风险为
+  `local_history`，副作用为 `git_objects`、`local_refs`、`git_indexes`、`hooks`。apply 只核对
+  workspace revision，不冻结 HEAD、index 或工作树。
+
+推荐使用两个独立 plan/apply，并在中间审阅 index。每次 apply 都复制紧邻 plan 返回的
+`workspace.revision`；commit apply 必须重复 plan 时完全相同的选择器和 message：
+
+```sh
+# 1. 计划并执行全量暂存。
+batch-git --output json --plan add --match 'service-*'
+batch-git --output json --apply --expect-workspace-revision 'sha256:<add-plan-revision>' \
+  add --match 'service-*'
+
+# 2. 在提交前审阅实际 index。
+batch-git exec --match 'service-*' -- diff --cached --stat
+
+# 3. 用同一条消息计划并执行 commit；复制 commit plan 自己的 revision。
+batch-git --output json --plan commit --match 'service-*' -m 'Update generated clients'
+batch-git --output json --apply --expect-workspace-revision 'sha256:<commit-plan-revision>' \
+  commit --match 'service-*' -m 'Update generated clients'
+```
 
 ## 远端、分支与定时任务
 

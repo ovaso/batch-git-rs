@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use assert_cmd::cargo::CommandCargoExt;
 use fs2::FileExt;
-use serde_json::Value;
+use serde_json::{Value, json};
 use tempfile::TempDir;
 
 struct WorkspaceFixture {
@@ -161,6 +161,20 @@ fn capabilities_is_discoverable_through_the_versioned_json_protocol() {
         receipt["data"].is_object() && !receipt["data"].as_object().unwrap().is_empty(),
         "capabilities must expose at least one discoverable value"
     );
+    let commands = receipt["data"]["commands"]
+        .as_array()
+        .expect("capabilities commands are an array");
+    for command in ["add", "commit", "unstage"] {
+        assert!(
+            commands.iter().any(|candidate| candidate == command),
+            "capabilities must advertise the controlled {command} command"
+        );
+    }
+    let safety = &receipt["data"]["safety"];
+    assert_eq!(safety["commit_stages_content"], false);
+    assert_eq!(safety["add_rejects_unresolved_conflicts"], true);
+    assert_eq!(safety["commit_rejects_repository_operations"], true);
+    assert_eq!(safety["unstage_preserves_working_trees"], true);
 }
 
 #[test]
@@ -221,6 +235,10 @@ fn invalid_automation_options_are_structured_as_invalid_arguments() {
                 "origin",
             ],
             "merge",
+        ),
+        (
+            &["--output", "json", "commit", "--message", "   "],
+            "commit",
         ),
     ];
 
@@ -353,6 +371,297 @@ fn plan_sync_returns_a_workspace_revision_without_rewriting_the_manifest() {
         fs::read(&manifest_path).expect("read manifest after plan"),
         before,
         "planning must not rewrite workspace.toml"
+    );
+}
+
+#[test]
+fn local_change_commands_emit_stable_json_receipts_and_noop_reasons() {
+    let fixture = WorkspaceFixture::new();
+    let repository = fixture.workspace.join("service");
+
+    let add_noop = json_output(run(&fixture.workspace, &["--output", "json", "add"]));
+    assert_single_repository_batch_result(&add_noop, "add", 0, "skipped", Some("nothing_to_stage"));
+
+    let commit_noop = json_output(run(
+        &fixture.workspace,
+        &["--output", "json", "commit", "--message", "protocol no-op"],
+    ));
+    assert_single_repository_batch_result(
+        &commit_noop,
+        "commit",
+        0,
+        "skipped",
+        Some("nothing_to_commit"),
+    );
+
+    let unstage_noop = json_output(run(&fixture.workspace, &["--output", "json", "unstage"]));
+    assert_single_repository_batch_result(
+        &unstage_noop,
+        "unstage",
+        0,
+        "skipped",
+        Some("nothing_to_unstage"),
+    );
+
+    fs::write(repository.join("README.md"), "staged by protocol test\n")
+        .expect("modify tracked fixture file");
+    fs::write(repository.join("ADDED.md"), "new staged content\n")
+        .expect("write untracked fixture file");
+
+    let add = json_output(run(&fixture.workspace, &["--output", "json", "add"]));
+    assert_single_repository_batch_result(&add, "add", 0, "ok", None);
+
+    let unstage = json_output(run(&fixture.workspace, &["--output", "json", "unstage"]));
+    assert_single_repository_batch_result(&unstage, "unstage", 0, "ok", None);
+    assert_eq!(
+        git_stdout(&repository, &["diff", "--cached", "--name-only"]),
+        "",
+        "unstage must remove index changes before the commit workflow resumes"
+    );
+    assert_eq!(
+        fs::read_to_string(repository.join("ADDED.md")).expect("read preserved worktree file"),
+        "new staged content\n",
+        "unstage must not remove working-tree content"
+    );
+
+    let add_again = json_output(run(&fixture.workspace, &["--output", "json", "add"]));
+    assert_single_repository_batch_result(&add_again, "add", 0, "ok", None);
+    configure_identity(&repository);
+    let commit = json_output(run(
+        &fixture.workspace,
+        &[
+            "--output",
+            "json",
+            "commit",
+            "--message",
+            "protocol local change",
+        ],
+    ));
+    assert_single_repository_batch_result(&commit, "commit", 0, "ok", None);
+    assert_eq!(
+        git_stdout(&repository, &["log", "-1", "--format=%s"]),
+        "protocol local change",
+        "the controlled commit must forward one exact shared message"
+    );
+}
+
+#[test]
+fn local_change_plans_expose_parameters_without_mutating_repository_state() {
+    let fixture = WorkspaceFixture::new();
+    let repository = fixture.workspace.join("service");
+    let manifest_path = fixture.workspace.join("workspace.toml");
+
+    fs::write(repository.join("README.md"), "planned staged content\n")
+        .expect("modify tracked fixture file");
+    git(&repository, &["add", "README.md"]);
+    fs::write(repository.join("UNSTAGED.md"), "planned worktree content\n")
+        .expect("write unstaged fixture file");
+
+    let manifest_before = fs::read(&manifest_path).expect("read manifest before plans");
+    let head_before = git_stdout(&repository, &["rev-parse", "HEAD"]);
+    let status_before = git_stdout(&repository, &["status", "--porcelain=v1"]);
+    let staged_before = git_stdout(&repository, &["diff", "--cached", "--name-only"]);
+
+    let add = json_output(run(
+        &fixture.workspace,
+        &["--output", "json", "--plan", "add"],
+    ));
+    assert_local_change_plan(&add, "add", "index", &["git_indexes"]);
+    assert_eq!(
+        add["data"]["parameters"],
+        json!({
+            "scope": "all_working_tree_changes",
+            "includes": ["additions", "modifications", "deletions"],
+            "force_ignored": false,
+        })
+    );
+
+    let message = "reviewable protocol commit";
+    let commit = json_output(run(
+        &fixture.workspace,
+        &["--output", "json", "--plan", "commit", "--message", message],
+    ));
+    assert_local_change_plan(
+        &commit,
+        "commit",
+        "local_history",
+        &["git_objects", "local_refs", "git_indexes", "hooks"],
+    );
+    assert_eq!(commit["data"]["parameters"]["message"], message);
+    assert_eq!(commit["data"]["parameters"]["stages_content"], false);
+
+    let unstage = json_output(run(
+        &fixture.workspace,
+        &["--output", "json", "--plan", "unstage"],
+    ));
+    assert_local_change_plan(&unstage, "unstage", "index", &["git_indexes"]);
+    assert_eq!(
+        unstage["data"]["parameters"],
+        json!({
+            "scope": "all_staged_changes",
+            "preserves_working_tree": true,
+            "moves_head": false,
+        })
+    );
+
+    assert_eq!(
+        fs::read(&manifest_path).expect("read manifest after plans"),
+        manifest_before,
+        "local-change planning must not rewrite workspace.toml"
+    );
+    assert_eq!(git_stdout(&repository, &["rev-parse", "HEAD"]), head_before);
+    assert_eq!(
+        git_stdout(&repository, &["status", "--porcelain=v1"]),
+        status_before,
+        "planning must not stage, unstage, or commit content"
+    );
+    assert_eq!(
+        git_stdout(&repository, &["diff", "--cached", "--name-only"]),
+        staged_before,
+        "planning must leave the index byte-for-byte equivalent at the protocol boundary"
+    );
+}
+
+#[test]
+fn add_and_commit_report_unresolved_conflicts_with_a_stable_reason_code() {
+    let fixture = WorkspaceFixture::new();
+    let repository = fixture.workspace.join("service");
+    configure_identity(&repository);
+
+    git(&repository, &["checkout", "-b", "conflict-side"]);
+    fs::write(repository.join("README.md"), "side branch\n").expect("write side branch content");
+    git(&repository, &["add", "README.md"]);
+    git(&repository, &["commit", "-m", "side conflict"]);
+    git(&repository, &["checkout", "main"]);
+    fs::write(repository.join("README.md"), "main branch\n").expect("write main branch content");
+    git(&repository, &["add", "README.md"]);
+    git(&repository, &["commit", "-m", "main conflict"]);
+    git_expect_failure(&repository, &["merge", "conflict-side"]);
+    let head_before = git_stdout(&repository, &["rev-parse", "HEAD"]);
+    let unmerged_before = git_stdout(&repository, &["ls-files", "--unmerged"]);
+
+    let output = run(&fixture.workspace, &["--output", "json", "add"]);
+    assert_eq!(output.status.code(), Some(1));
+    let receipt = json_output(output);
+    assert_single_repository_batch_result(
+        &receipt,
+        "add",
+        1,
+        "failed",
+        Some("unresolved_conflicts"),
+    );
+
+    let output = run(
+        &fixture.workspace,
+        &[
+            "--output",
+            "json",
+            "commit",
+            "--message",
+            "must not commit unresolved conflicts",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let receipt = json_output(output);
+    assert_single_repository_batch_result(
+        &receipt,
+        "commit",
+        1,
+        "failed",
+        Some("unresolved_conflicts"),
+    );
+    assert_eq!(
+        git_stdout(&repository, &["rev-parse", "HEAD"]),
+        head_before,
+        "a rejected conflict commit must not move HEAD"
+    );
+    assert_eq!(
+        git_stdout(&repository, &["ls-files", "--unmerged"]),
+        unmerged_before,
+        "a rejected conflict commit must leave the unmerged index untouched"
+    );
+    assert!(
+        repository.join(".git").join("MERGE_HEAD").is_file(),
+        "batch-git must leave conflict resolution to the explicit Git workflow"
+    );
+}
+
+#[test]
+fn commit_reports_detached_head_with_a_stable_reason_code() {
+    let fixture = WorkspaceFixture::new();
+    let repository = fixture.workspace.join("service");
+    configure_identity(&repository);
+    git(&repository, &["checkout", "--detach", "HEAD"]);
+    fs::write(repository.join("DETACHED.md"), "detached content\n")
+        .expect("write detached fixture content");
+    git(&repository, &["add", "DETACHED.md"]);
+    let head_before = git_stdout(&repository, &["rev-parse", "HEAD"]);
+
+    let output = run(
+        &fixture.workspace,
+        &[
+            "--output",
+            "json",
+            "commit",
+            "--message",
+            "must not commit detached",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let receipt = json_output(output);
+    assert_single_repository_batch_result(&receipt, "commit", 1, "failed", Some("detached_head"));
+    assert_eq!(
+        git_stdout(&repository, &["rev-parse", "HEAD"]),
+        head_before,
+        "a rejected detached commit must not move HEAD"
+    );
+}
+
+#[test]
+fn commit_reports_repository_operations_in_progress_with_a_stable_reason_code() {
+    let fixture = WorkspaceFixture::new();
+    let repository = fixture.workspace.join("service");
+    configure_identity(&repository);
+
+    git(&repository, &["checkout", "-b", "pending-merge"]);
+    fs::write(repository.join("PENDING.md"), "pending merge content\n")
+        .expect("write pending merge fixture content");
+    git(&repository, &["add", "PENDING.md"]);
+    git(&repository, &["commit", "-m", "pending side"]);
+    git(&repository, &["checkout", "main"]);
+    git(
+        &repository,
+        &["merge", "--no-commit", "--no-ff", "pending-merge"],
+    );
+    let head_before = git_stdout(&repository, &["rev-parse", "HEAD"]);
+
+    let output = run(
+        &fixture.workspace,
+        &[
+            "--output",
+            "json",
+            "commit",
+            "--message",
+            "must not finish merge",
+        ],
+    );
+    assert_eq!(output.status.code(), Some(1));
+    let receipt = json_output(output);
+    assert_single_repository_batch_result(
+        &receipt,
+        "commit",
+        1,
+        "failed",
+        Some("repository_operation_in_progress"),
+    );
+    assert_eq!(
+        git_stdout(&repository, &["rev-parse", "HEAD"]),
+        head_before,
+        "a rejected in-progress operation must not create a commit"
+    );
+    assert!(
+        repository.join(".git").join("MERGE_HEAD").is_file(),
+        "batch-git must leave the explicit Git operation for the user to resolve"
     );
 }
 
@@ -785,6 +1094,36 @@ fn jsonl_batch_and_schedule_runs_emit_a_complete_ordered_lifecycle() {
 }
 
 #[test]
+fn local_change_noops_emit_complete_jsonl_batch_lifecycles() {
+    let fixture = WorkspaceFixture::new();
+    let cases = [
+        (vec!["--output", "jsonl", "add"], "add", "nothing_to_stage"),
+        (
+            vec!["--output", "jsonl", "commit", "--message", "protocol no-op"],
+            "commit",
+            "nothing_to_commit",
+        ),
+        (
+            vec!["--output", "jsonl", "unstage"],
+            "unstage",
+            "nothing_to_unstage",
+        ),
+    ];
+
+    for (arguments, command, reason_code) in cases {
+        let output = run(&fixture.workspace, &arguments);
+        assert_eq!(output.status.code(), Some(0));
+        let events = jsonl_output(output);
+        assert_eq!(
+            events[1]["data"]["result"]["reason_code"], reason_code,
+            "{command} must retain its repository no-op reason in JSONL"
+        );
+        assert_eq!(events[2]["data"]["skipped"], 1);
+        assert_jsonl_repository_lifecycle(events, command);
+    }
+}
+
+#[test]
 fn jsonl_clone_emits_a_complete_single_repository_lifecycle() {
     let fixture = WorkspaceFixture::new();
     let remote = fixture
@@ -969,6 +1308,103 @@ fn assert_workspace_revision(receipt: &Value) {
             .as_str()
             .is_some_and(|revision| revision.starts_with("sha256:")),
         "machine receipts must return the plan/apply workspace revision"
+    );
+}
+
+fn assert_single_repository_batch_result(
+    receipt: &Value,
+    command: &str,
+    exit_code: i32,
+    status: &str,
+    reason_code: Option<&str>,
+) {
+    assert_eq!(receipt["api_version"], "v1");
+    assert_eq!(receipt["command"], command);
+    assert_eq!(receipt["exit_code"], exit_code);
+    assert_eq!(receipt["ok"], exit_code == 0);
+    assert_eq!(
+        receipt.get("error"),
+        Some(&Value::Null),
+        "repository-level failures must keep the top-level error null"
+    );
+    assert_workspace_revision(receipt);
+
+    let summary = &receipt["data"]["summary"];
+    assert_eq!(summary["ok"], usize::from(status == "ok"));
+    assert_eq!(summary["skipped"], usize::from(status == "skipped"));
+    assert_eq!(summary["failed"], usize::from(status == "failed"));
+
+    let results = receipt["data"]["results"]
+        .as_array()
+        .expect("batch receipt results are an array");
+    assert_eq!(results.len(), 1);
+    let result = &results[0];
+    assert_eq!(result["repository"], "service");
+    assert_eq!(result["directory"], "service");
+    assert_eq!(result["status"], status);
+    assert_eq!(result["synchronized"], false);
+    match reason_code {
+        Some(reason_code) => assert_eq!(result["reason_code"], reason_code),
+        None => assert!(
+            result.get("reason_code").is_none(),
+            "successful results must not invent a reason code"
+        ),
+    }
+}
+
+fn assert_local_change_plan(receipt: &Value, command: &str, risk: &str, side_effects: &[&str]) {
+    assert_success_receipt(receipt, command);
+    assert_workspace_revision(receipt);
+    assert_eq!(receipt["data"]["mode"], "plan");
+    assert_eq!(receipt["data"]["risk"], risk);
+    assert_eq!(receipt["data"]["side_effects"], json!(side_effects));
+    assert_eq!(
+        receipt["data"]["workspace_revision"],
+        receipt["workspace"]["revision"]
+    );
+    assert_eq!(
+        receipt["data"]["selection"]["repositories"][0]["name"],
+        "service"
+    );
+}
+
+fn configure_identity(repository: &Path) {
+    git(
+        repository,
+        &["config", "user.name", "batch-git protocol tests"],
+    );
+    git(
+        repository,
+        &["config", "user.email", "batch-git@example.invalid"],
+    );
+}
+
+fn git_stdout(directory: &Path, arguments: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(directory)
+        .args(arguments)
+        .output()
+        .expect("run Git fixture command");
+    assert!(
+        output.status.success(),
+        "Git fixture command failed: {arguments:?}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout)
+        .expect("Git fixture stdout is UTF-8")
+        .trim_end()
+        .to_owned()
+}
+
+fn git_expect_failure(directory: &Path, arguments: &[&str]) {
+    let output = Command::new("git")
+        .current_dir(directory)
+        .args(arguments)
+        .output()
+        .expect("run failing Git fixture command");
+    assert!(
+        !output.status.success(),
+        "Git fixture command unexpectedly succeeded: {arguments:?}"
     );
 }
 

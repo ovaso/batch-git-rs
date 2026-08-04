@@ -285,8 +285,18 @@ impl RepositoryResult {
             Some("repository_unavailable")
         } else if detail.contains("nothing to push") {
             Some("nothing_to_push")
+        } else if detail.contains("nothing to stage") {
+            Some("nothing_to_stage")
+        } else if detail.contains("nothing to unstage") {
+            Some("nothing_to_unstage")
         } else if detail.contains("nothing to commit") {
             Some("nothing_to_commit")
+        } else if detail.contains("unresolved conflicts") {
+            Some("unresolved_conflicts")
+        } else if detail.contains("head is detached") {
+            Some("detached_head")
+        } else if detail.contains("repository operation is in progress") {
+            Some("repository_operation_in_progress")
         } else if detail.contains("timed out") {
             Some("timeout")
         } else if self.exit_code.is_some() {

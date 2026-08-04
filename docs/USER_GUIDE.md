@@ -256,7 +256,85 @@ batch-git merge --no-update-current feature/login
 `--default` 与位置分支、`--feature`、`--remote` 互斥，但可以与 `--update-current` 或
 `--no-update-current` 组合。
 
-## 7. 执行原生 Git
+## 7. 暂存与提交
+
+`add`、`commit` 和 `unstage` 使用与 `sync` 相同的仓库选择器：位置参数可写规范仓库名或
+workspace 相对目录，`--match` 按仓库名使用区分大小写的 `*` 通配，`--all` 显式选择整个
+工作区。省略所有选择条件时也默认整个工作区。首版不接受文件 pathspec；每个选中仓库都使用
+命令定义的全量 index 范围。
+
+### 7.1 暂存全部工作树变更
+
+```sh
+batch-git add
+batch-git add service-api service-web
+batch-git add --match 'service-*'
+batch-git add --all
+```
+
+`add` 在每个选中仓库中暂存全部未被 Git 忽略的新增、修改和删除，等价于从仓库根目录执行
+受控的 `git add --all`。它不会用 force 加入 ignored 文件。仓库没有可暂存内容时结果为
+`skipped`；存在未解决冲突时，为避免批量命令把冲突文件意外标记为已解决，该仓库会以
+`unresolved_conflicts` 失败。
+
+需要在冲突处理时只暂存明确文件，或首版需要按文件暂存时，应进入单个仓库使用原生 Git，或在
+精确选择仓库后使用逃生舱，例如：
+
+```sh
+batch-git exec service-api -- add -- src/api.rs
+```
+
+### 7.2 审阅并提交暂存区
+
+推荐把暂存、审阅和提交保持为三个明确步骤：
+
+```sh
+batch-git add --match 'service-*'
+batch-git exec --match 'service-*' -- diff --cached --stat
+batch-git commit --match 'service-*' -m 'Update generated clients'
+```
+
+`commit` 要求非空的 `-m` / `--message`，并在每个有暂存内容的选中仓库中使用同一消息。它只
+提交当前 index，不会隐式暂存工作树内容，也不提供 amend、空提交或绕过 hook 的选项。只有
+未暂存或 untracked 变更时，该仓库以 `nothing_to_commit` 正常跳过；unborn 分支只要已有暂存
+内容即可创建 root commit。
+
+安全批量 commit 会拒绝 detached HEAD、未解决冲突，以及正在进行的 merge、rebase、
+cherry-pick、revert 或其他 Git operation。这样不会用一个普通批量命令意外结束已有的 Git
+工作流；应进入对应仓库检查，并使用明确的原生 Git continue/abort 流程。
+
+`commit` 仍遵循各仓库的身份、hook、`core.hooksPath` 和签名配置。pre-commit、commit-msg、
+签名程序等可能失败、等待交互或产生额外副作用；需要交互时使用文本模式和 `--jobs 1`。机器
+输出及 `--non-interactive` 会关闭 Git stdin 和终端凭据提示，但自定义 hook 或签名程序仍可能
+直接访问 TTY。
+
+### 7.3 撤销全部暂存
+
+```sh
+batch-git unstage
+batch-git unstage service-api service-web
+batch-git unstage --match 'service-*'
+```
+
+`unstage` 把每个选中仓库的全部 index 变更恢复到 HEAD，同时不改任何工作树文件，也不移动
+HEAD。新增文件会留在工作树中并重新显示为 untracked，暂存的修改或删除会重新显示为未暂存。
+unborn HEAD 没有可恢复的提交，命令会使用 `git read-tree --empty` 清空 index，工作树仍保持
+原样。没有暂存内容时结果为 `nothing_to_unstage` 的正常跳过。
+
+撤销暂存会移除当前 index 快照，不能撤销已经创建的 commit。若暂存内容与工作树内容不同，先用
+`git diff --cached` 审阅需要保留的 staged 版本。
+
+### 7.4 并发与部分成功
+
+三个命令都持有工作区锁，但会按 `--jobs` 在不同仓库中有界并发。它们不是跨仓库事务：一个
+仓库的 hook、签名、index lock 或 Git 命令失败，不会回滚其他仓库已经完成的暂存、撤销暂存或
+commit。尤其是 commit 出现退出码 `1` 时，可能已有部分仓库产生新提交，程序不会自动 reset、
+amend 或 rebase。
+
+`--timeout` 只终止直接 Git 子进程。hook、签名或 filter 后代可能继续运行；commit 也可能在
+更新 ref 后才因后续步骤超时。遇到 timeout 后应逐仓库检查 HEAD、index 和工作树，不要盲目重试。
+
+## 8. 执行原生 Git
 
 所有已物化仓库：
 
@@ -295,7 +373,7 @@ batch-git --jobs 1 exec service-api -- rebase -i HEAD~3
 timeout 只终止直接启动的 Git 子进程，不能保证结束其再派生的认证、传输或 helper 进程；
 收到 timeout 后仍应检查相关远端或本地目录，不要假设所有后续工作已经停止。
 
-## 8. 登记管理
+## 9. 登记管理
 
 ```sh
 batch-git forget service-old
@@ -304,7 +382,7 @@ batch-git forget services/legacy
 
 `forget` 只删除 `workspace.toml` 中的登记，不删除仓库目录或任何 Git 数据。
 
-## 9. 并发、输出和颜色
+## 10. 并发、输出和颜色
 
 多仓库任务使用有上限的并发，但结果始终按清单顺序输出。单仓库失败不会取消
 其他仓库。并发数优先级为：`--jobs` > `BATCH_GIT_JOBS` > `4`。
@@ -312,7 +390,7 @@ batch-git forget services/legacy
 交互终端中的 clone、restore 和 fetch 会显示动态进度；重定向或 CI 中自动退化为
 稳定表格。设置 `NO_COLOR`、`TERM=dumb`，或将输出接入管道时，不输出颜色控制码。
 
-### 9.1 可编程输出、plan 与 apply
+### 10.1 可编程输出、plan 与 apply
 
 ```sh
 batch-git --output json capabilities
@@ -327,7 +405,7 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 `--output json` 每次只输出一个 v1 receipt；`--output jsonl` 每行输出一个事件，仓库事件按
 清单顺序而非完成时间输出。单仓库 `clone` 同样发送一个 `repository_finished` 事件，失败时以
 请求的目标目录标识该结果。`--plan` 不做写入或网络访问，列出实际范围、风险与预期副作用；`--apply` 在执行前核对
-`workspace.toml` revision。该核对不能锁定远端或工作树状态，因此仍应把 Git 的执行期
+`workspace.toml` revision。该核对不能锁定远端、HEAD、index 或工作树状态，因此仍应把 Git 的执行期
 检查和仓库级结果当作最终事实。schedule 有独立的 `schedule plan`、`doctor`、`generate` 和
 `--dry-run` 流程。
 
@@ -342,17 +420,17 @@ batch-git --output json schema workspace
 `schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 输入表示；`repositories`、
 `schedules` 和 schedule 的默认字段可以省略，不必先将默认值补齐。
 
-## 10. 退出码
+## 11. 退出码
 
 | 退出码 | 含义 |
 |---:|---|
-| `0` | 命令完成；允许预期内的 checkout skip |
+| `0` | 命令完成；允许预期内的 skip，例如没有内容可暂存、提交或撤销暂存 |
 | `1` | 至少一个仓库操作失败 |
 | `2` | 参数、配置、工作区、清单校验或文件写入错误 |
 
 批量命令可能部分成功。看到退出码 `1` 时，应以结果表中的仓库级状态为准。
 
-## 11. 常见问题
+## 12. 常见问题
 
 ### 找不到 `workspace.toml`
 

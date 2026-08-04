@@ -487,6 +487,8 @@ fn is_invalid_argument_message(message: &str) -> bool {
         "--apply is only valid",
         "--apply requires --expect-workspace-revision",
         "--expect-workspace-revision requires --apply",
+        "--all cannot be combined with repository selectors or --match",
+        "commit message cannot be empty",
         "git passthrough requires arguments after --",
         "use schedule plan ",
     ]

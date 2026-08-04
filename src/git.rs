@@ -227,6 +227,14 @@ pub struct RepositoryStatusSummary {
     pub upstream: UpstreamSummary,
 }
 
+/// Index and working-tree facts used by the controlled staging commands.
+#[derive(Debug, Default)]
+pub struct StagingState {
+    pub has_staged_changes: bool,
+    pub has_worktree_changes: bool,
+    pub has_conflicts: bool,
+}
+
 /// 在指定仓库运行系统 Git，并根据托管模式隔离调用方的路由环境变量。
 #[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
 pub fn run<I, S>(directory: &Path, args: I, managed: bool, allow_stdin: bool) -> Result<GitOutput>
@@ -867,6 +875,17 @@ pub fn current_branch_summary(path: &Path) -> Result<String> {
     Ok(format!("(detached:{short_id})"))
 }
 
+/// Return whether HEAD is unborn without relying on the human-readable branch summary.
+pub fn head_is_unborn(path: &Path) -> Result<bool> {
+    let repository = Repository::open(path)
+        .with_context(|| format!("failed to open Git repository {}", path.display()))?;
+    match repository.head() {
+        Ok(_) => Ok(false),
+        Err(error) if error.code() == git2::ErrorCode::UnbornBranch => Ok(true),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// 容错收集仓库状态；异常被编码进状态而不是中断整个工作区。
 pub fn repository_runtime_info(path: &Path) -> RepositoryRuntimeInfo {
     if !path.exists() {
@@ -1081,6 +1100,59 @@ pub fn status_summary(path: &Path) -> Result<RepositoryStatusSummary> {
         changes,
         upstream,
     })
+}
+
+/// Inspect whether a repository has index changes, stageable working-tree changes, or conflicts.
+///
+/// Conflicts count as both staged and stageable so callers cannot misclassify an unmerged index
+/// as an ordinary no-op. The controlled commands then apply their own conservative policy.
+pub fn staging_state(path: &Path) -> Result<StagingState> {
+    let repository = Repository::open(path)
+        .with_context(|| format!("failed to open Git repository {}", path.display()))?;
+    let mut options = StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+    let statuses = repository
+        .statuses(Some(&mut options))
+        .context("failed to inspect repository staging state")?;
+    let mut state = StagingState::default();
+    for entry in statuses.iter() {
+        let status = entry.status();
+        if status.contains(Status::CONFLICTED) {
+            state.has_conflicts = true;
+            state.has_staged_changes = true;
+            state.has_worktree_changes = true;
+        }
+        if status.intersects(
+            Status::INDEX_NEW
+                | Status::INDEX_MODIFIED
+                | Status::INDEX_DELETED
+                | Status::INDEX_RENAMED
+                | Status::INDEX_TYPECHANGE,
+        ) {
+            state.has_staged_changes = true;
+        }
+        if status.intersects(
+            Status::WT_NEW
+                | Status::WT_MODIFIED
+                | Status::WT_DELETED
+                | Status::WT_RENAMED
+                | Status::WT_TYPECHANGE,
+        ) {
+            state.has_worktree_changes = true;
+        }
+    }
+    Ok(state)
+}
+
+/// Return whether Git is completing a merge, rebase, cherry-pick, revert, or similar sequence.
+pub fn operation_in_progress(path: &Path) -> Result<bool> {
+    let repository = Repository::open(path)
+        .with_context(|| format!("failed to open Git repository {}", path.display()))?;
+    Ok(repository.state() != git2::RepositoryState::Clean)
 }
 
 /// 通过 merge-base 图关系计算 ahead/behind，不访问网络。

@@ -10,8 +10,9 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
                                   │
                      workspace ──┼── model (workspace.toml validation)
                      lock/write  │
-                                  ├── git2: inspection and local ref operations
-                                  └── system Git: network, merge/pull/push, passthrough
+                                  ├── git2: inspection, staging facts and local ref operations
+                                  └── system Git: add/commit/unstage, merge/pull/push,
+                                                  clone/fetch and passthrough
                                            │
                                       report + table + color
 ```
@@ -25,7 +26,8 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
 - `commands` 编排工作区命令；单仓库失败应转为可聚合结果，不能取消其他仓库。
 - `workspace` 负责根目录发现、排他锁和 `workspace.toml` 原子替换。
 - `model` 定义 schema version 1、跨字段校验和可序列化模型。
-- `git` 用 `git2` 读取本地状态，用系统 Git 执行网络和兼容性敏感操作。
+- `git` 用 `git2` 读取本地状态、index 事实和仓库 operation 状态，用系统 Git 执行
+  add/commit/unstage、merge/pull/push、clone/fetch 等网络操作和兼容性敏感透传。
 - `schedule` 将声明翻译为 launchd、systemd user timer 或 Windows Task Scheduler，并维护
   本地注册摘要；不把系统路径写入共享清单。
 - `parallel` 保证并发上限和输入顺序收集；`report`/`table` 保证稳定、可读的结果输出。
@@ -43,10 +45,21 @@ records，且不把子 Git stdout/stderr 放入协议。`--output jsonl` 在相�
 success、skipped 与 failed 的差别。
 
 `sync` 是无人值守默认操作：恢复缺失仓库并 fetch/prune，不修改已存在的工作树。`pull` 固定为
-fast-forward-only。需要修改历史、清理工作树或强制推送的 Git 命令不是内建自动化能力。
+fast-forward-only。`add` 只暂存全部非忽略的新增、修改和删除，并在未解决冲突时拒绝；`commit`
+只提交既有 index，拒绝 detached HEAD 和正在进行的 Git operation，不提供 implicit add、amend、
+空提交或 hook bypass；`unstage` 全量恢复 index 且不改工作树，unborn HEAD 使用
+`git read-tree --empty`。重写历史、清理工作树或强制推送仍不是内建自动化能力。
+
+commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产生 batch-git 无法分类的本地或外部
+副作用。系统 Git 的单仓库 index/ref lock 与工作区锁共同降低并发冲突，但外部原生 Git 不遵循
+`.workspace.lock`。批量命令不是事务：某些仓库已创建提交后，后续仓库失败或超时不会触发自动
+reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、filter 或签名后代仍可能存活，
+调用方必须重新检查 HEAD、index 和工作树。
 
 计划不是事务：`--plan` 只读取本地状态并返回 `workspace.toml` digest；`--apply` 在持锁后
-重新核对该 digest，然后才执行可写命令。它不保存额外账本、不会锁住远端，也不承诺跨仓库回滚。
+重新核对该 digest，然后才执行可写命令。add/commit/unstage plan 还公开固定的 index 范围、
+提交消息或工作树保留属性，但不会冻结 HEAD、index 或工作树。它不保存额外账本、不会锁住远端，
+也不承诺跨仓库回滚。
 系统 Git 由 `GitExecutionOptions` 统一控制 stdin、`GIT_TERMINAL_PROMPT` 和单子进程 timeout；
 机器输出强制非交互，以免子进程流污染 JSON。
 

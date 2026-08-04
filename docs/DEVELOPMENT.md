@@ -3,7 +3,8 @@
 ## 1. 技术边界
 
 - `git2/libgit2`：本地仓库读取、checkout、远端和分支配置，不启用网络特性；
-- 系统 Git CLI：clone、fetch、push、merge、pull 以及 `--` 后的精确透传；
+- 系统 Git CLI：add、commit、restore/read-tree unstage、clone、fetch、push、merge、pull
+  以及 `--` 后的精确透传；
 - `workspace.toml`：声明式、可复制的工作区清单；
 - `.workspace.lock`：串行化可能修改 Git 状态或清单的 batch-git 进程；
 - `automation result v1`：全局 `--output json|jsonl` 的稳定协议；旧子命令 `--json` 只作兼容；
@@ -12,6 +13,10 @@
 
 禁止隐式执行会改变提交关系或丢失工作树数据的动作。除非用户明确调用对应命令，
 不自动 pull、merge、rebase、stash、reset、clean 或切换分支。
+内建 `commit` 只读取既有 index，不得增加 implicit add、amend、空提交或 hook bypass；应拒绝
+detached HEAD、未解决冲突和进行中的 Git operation。内建 `add` 首版固定为全部非忽略新增、
+修改和删除且拒绝冲突；`unstage` 必须只改 index、保留工作树，unborn HEAD 使用
+`git read-tree --empty`，不得引入第二份持久化状态。
 
 ## 2. 本地验证
 
@@ -23,6 +28,9 @@ cargo test --locked
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --locked --release
 ./target/release/batch-git --help
+./target/release/batch-git add --help
+./target/release/batch-git commit --help
+./target/release/batch-git unstage --help
 ./target/release/batch-git schedule --help
 ```
 
@@ -34,9 +42,11 @@ Linux 上执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建 r
 或其他非系统绝对路径。macOS 可使用 `otool -L target/release/batch-git`，Linux 可
 使用 `ldd target/release/batch-git`。
 
-`tests/mvp.rs` 覆盖主要端到端工作流；各模块内单元测试覆盖解析、清单校验、
-输出和平台定义生成。`tests/automation_protocol.rs` 覆盖 v1 receipt、旧 JSON 兼容、
-结构化参数错误、JSONL 生命周期，以及 plan/apply 在加锁前后都生效的 revision 前置条件。
+`tests/mvp.rs` 覆盖主要端到端工作流；add/commit/unstage 变更应覆盖 index、工作树、unborn、
+冲突、detached HEAD、hook 和部分成功边界。各模块内单元测试覆盖解析、清单校验、输出和平台
+定义生成。`tests/automation_protocol.rs` 覆盖 v1 receipt、旧 JSON 兼容、结构化参数错误、JSONL
+生命周期、暂存命令 reason code / capabilities / plan parameters，以及 plan/apply 在加锁前后都
+生效的 revision 前置条件。
 
 ## 3. 文档维护约定
 

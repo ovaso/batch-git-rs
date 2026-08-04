@@ -7,20 +7,21 @@
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
 `workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
-当前封版版本：`0.3.0`。
+当前封版版本：`0.4.0`。
 
 ## 主要能力
 
 - 扫描已有目录并生成工作区清单；
 - 从清单恢复缺失仓库，或克隆并自动登记单个仓库；
-- 批量 fetch、fast-forward pull、push、checkout、merge 和查看状态；
+- 批量 add、commit、unstage、fetch、fast-forward pull、push、checkout、merge 和查看状态；
 - 按仓库精确选择或按名称通配后执行原生 Git 命令；
 - 在 macOS `launchd`、Linux `systemd --user` 或 Windows Task Scheduler 中注册定时同步；
 - 有界并发、稳定输出顺序、工作区锁和聚合退出码；
 - 面向 CI 与 agent 的版本化 JSON / JSON Lines 协议、结构化错误、能力发现和 plan/apply
   清单前置条件。
 
-`batch-git` 不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
+`batch-git commit` 只提交已经进入暂存区的内容，不会隐式 add、amend、创建空提交或绕过 hook；
+工具也不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
 clone 或 restore 失败/超时时也不会递归删除目标目录；保留的内容须由用户检查并明确处理后才能重试。
 
 ## 安装
@@ -42,6 +43,9 @@ BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
+安装产物和正式命令名始终是 `batch-git`；`bit` 仅是用户可自行配置的 shell alias，示例见
+[用户手册](docs/USER_GUIDE.md#2-安装与验证)。
+
 ## 快速开始
 
 从现有多仓库目录建立工作区：
@@ -52,6 +56,11 @@ batch-git scan
 batch-git status
 batch-git branch
 batch-git fetch
+
+# 明确暂存、审阅并提交；省略选择器时覆盖整个工作区。
+batch-git add --match 'service-*'
+batch-git exec --match 'service-*' -- diff --cached --stat
+batch-git commit --match 'service-*' -m 'Update generated clients'
 ```
 
 用清单恢复工作区：
@@ -94,6 +103,9 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 | 创建或补充清单 | `batch-git scan` |
 | 查看工作区状态 | `batch-git status` |
 | 查看当前分支 | `batch-git branch` |
+| 暂存全部非忽略变更 | `batch-git add [repositories]` |
+| 提交已暂存内容 | `batch-git commit [repositories] -m <message>` |
+| 撤销全部暂存并保留工作树 | `batch-git unstage [repositories]` |
 | 安全更新远端引用 | `batch-git fetch` 或 `batch-git sync` |
 | fast-forward 更新当前分支 | `batch-git pull` |
 | 推送当前 tracking 分支 | `batch-git push` |
@@ -146,7 +158,7 @@ Git 子进程，不能保证终止其认证或传输后代进程。
 
 ## 退出码
 
-- `0`：命令完成；允许预期内的 checkout skip；
+- `0`：命令完成；允许预期内的 skip，例如无内容可暂存、提交或撤销暂存；
 - `1`：至少一个仓库操作失败；
 - `2`：参数、环境变量、工作区、清单校验或文件写入错误。
 
