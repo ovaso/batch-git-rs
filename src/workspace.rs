@@ -42,6 +42,7 @@ impl WorkspaceLock {
     }
 
     /// 非阻塞尝试获取锁；锁被占用时返回 `None` 而不是错误。
+    #[cfg(feature = "schedule")]
     pub fn try_acquire(root: &Path) -> Result<Option<Self>> {
         fs::create_dir_all(root)
             .with_context(|| format!("failed to create workspace root {}", root.display()))?;

@@ -6,6 +6,7 @@ use anyhow::{Context, Result, bail};
 
 /// 已展开为离散取值集合的六段式 cron 表达式。
 #[derive(Debug, Clone)]
+#[cfg_attr(not(feature = "schedule"), allow(dead_code))]
 pub(crate) struct CronExpression {
     second: CronField,
     minute: CronField,
@@ -17,6 +18,7 @@ pub(crate) struct CronExpression {
 
 /// 单个 cron 字段的有序值集合及“未限制”标志。
 #[derive(Debug, Clone)]
+#[cfg_attr(not(feature = "schedule"), allow(dead_code))]
 pub(crate) struct CronField {
     values: Vec<u8>,
     unrestricted: bool,
@@ -33,6 +35,7 @@ enum FieldKind {
     DayOfWeek,
 }
 
+#[cfg_attr(not(feature = "schedule"), allow(dead_code))]
 impl CronExpression {
     /// 解析六段式表达式，并拒绝原生调度器无法一致表达的日期语义。
     pub(crate) fn parse(expression: &str) -> Result<Self> {

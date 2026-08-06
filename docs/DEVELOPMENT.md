@@ -25,6 +25,8 @@ detached HEAD、未解决冲突和进行中的 Git operation。内建 `add` 首�
 ```sh
 cargo fmt -- --check
 cargo test --locked
+cargo check --locked --no-default-features
+cargo test --locked --no-default-features --lib
 cargo clippy --all-targets --all-features -- -D warnings
 cargo build --locked --release
 ./target/release/batch-git --help
@@ -34,6 +36,11 @@ cargo build --locked --release
 ./target/release/batch-git env --help
 ./target/release/batch-git schedule --help
 ```
+
+默认 feature `schedule` 保持正式发布命令面不变；`--no-default-features` 用于验证精简构建。
+该构建必须继续读取和原样保留清单中的 schedule 声明，但 `capabilities.commands` 和顶层帮助中
+不得宣称存在未编译的 `schedule` 命令。三平台 artifact 生成器在启用 feature 时都参与编译和
+测试，以保留跨平台预览；只允许真实宿主系统调用使用 `target_os` 条件编译。
 
 发布前还应运行 `cargo deny check advisories bans licenses sources`。GitHub Actions 会在
 Linux 上执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建 release 产物；

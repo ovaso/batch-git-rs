@@ -33,9 +33,16 @@ clone 或 restore 失败/超时时也不会递归删除目标目录；保留的�
 cargo build --release
 ./target/release/batch-git --version
 
+# 可选：构建不含 schedule 命令和原生调度器集成的精简版本
+cargo build --release --no-default-features
+
 # 构建并安装到指定目录
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
+
+默认 feature 集包含 `schedule`，因此普通构建的命令面保持完整。关闭默认 features 只影响当前
+二进制是否提供 `schedule` 命令；`workspace.toml` 仍会解析并保留既有 schedule 声明，避免精简
+构建改写清单时丢失数据。自动化应以 `capabilities.data.commands` 判断当前二进制是否支持调度。
 
 确保安装目录已经加入 `PATH`：
 

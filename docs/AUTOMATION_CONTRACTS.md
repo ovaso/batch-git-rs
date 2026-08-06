@@ -209,6 +209,8 @@ batch-git --output json schema workspace
 ```
 
 `capabilities` 声明二进制版本、协议版本、输出格式、可用命令、plan/apply 边界和安全属性。
+`commands` 是当前构建的实际命令面：默认构建包含 `schedule`；使用 `--no-default-features`
+编译的精简二进制不会列出或接受该命令。调用方不得仅根据版本号推断 feature。
 支持本组命令的二进制会在 `commands` 中列出 `add`、`commit`、`env`、`unstage`，并在
 `safety` 中声明 `commit_stages_content=false`、`add_rejects_unresolved_conflicts=true`、
 `commit_rejects_repository_operations=true` 和 `unstage_preserves_working_trees=true`。

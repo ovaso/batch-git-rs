@@ -1,5 +1,8 @@
 //! Runtime-only settings resolved from CLI flags and environment variables.
 
+use std::env;
+use std::path::PathBuf;
+
 use anyhow::{Context, Result, bail};
 /// 默认并发仓库数。
 pub(crate) const DEFAULT_JOBS: usize = 4;
@@ -20,9 +23,7 @@ pub(crate) fn environment_variables(resolved_jobs: usize) -> Result<Vec<Environm
     let workspace = crate::workspace::find_root_optional()?
         .map(|path| path.to_string_lossy().into_owned())
         .unwrap_or_else(|| "<not found>".to_owned());
-    let state_directory = crate::schedule::state_root()?
-        .to_string_lossy()
-        .into_owned();
+    let state_directory = state_root()?.to_string_lossy().into_owned();
 
     Ok(vec![
         environment_variable(
@@ -135,6 +136,39 @@ fn default_state_directory() -> &'static str {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn default_state_directory() -> &'static str {
     "$XDG_STATE_HOME/batch-git or $HOME/.local/state/batch-git"
+}
+
+/// 根据平台约定和环境变量确定 batch-git 用户状态根目录。
+pub(crate) fn state_root() -> Result<PathBuf> {
+    if let Some(value) = env::var_os("BATCH_GIT_STATE_DIR") {
+        return Ok(PathBuf::from(value));
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Ok(home_directory()?.join("Library/Application Support/batch-git"))
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(value) = env::var_os("LOCALAPPDATA").or_else(|| env::var_os("APPDATA")) {
+            return Ok(PathBuf::from(value).join("batch-git"));
+        }
+        Ok(home_directory()?.join("AppData/Local/batch-git"))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        if let Some(value) = env::var_os("XDG_STATE_HOME") {
+            return Ok(PathBuf::from(value).join("batch-git"));
+        }
+        Ok(home_directory()?.join(".local/state/batch-git"))
+    }
+}
+
+/// 跨平台读取当前用户主目录，不猜测相对路径。
+pub(crate) fn home_directory() -> Result<PathBuf> {
+    env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow::anyhow!("HOME and USERPROFILE are not set"))
 }
 
 /// 解析并发数，优先级依次为 CLI、环境变量、默认值。

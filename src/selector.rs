@@ -102,5 +102,12 @@ mod tests {
         assert!(wildcard_matches("service-*", "service-api"));
         assert!(wildcard_matches("*", "service-api"));
         assert!(!wildcard_matches("service-?", "service-a"));
+        assert!(wildcard_matches("main", "main"));
+        assert!(!wildcard_matches("main", "main-old"));
+        assert!(wildcard_matches("feature/*", "feature/login"));
+        assert!(wildcard_matches("*登录*", "feature/登录-v2"));
+        assert!(wildcard_matches("release/*/hotfix", "release/1.0/hotfix"));
+        assert!(!wildcard_matches("release/*/hotfix", "release/hotfix"));
+        assert!(wildcard_matches("**main**", "main"));
     }
 }

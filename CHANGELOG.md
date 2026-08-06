@@ -5,6 +5,24 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 将命令编排按 plan、自动化发现、工作区生命周期、只读查询、同步/远端、暂存提交、分支与 Git
+  透传拆分为独立模块；工作区生命周期进一步分离 clone、scan、restore 和清单 membership，只读
+  查询分离 list、status、find、info 和 branch。schedule 命令再按声明、执行、查询、本机生命周期
+  与纯辅助规则拆分，并继续隔离三平台原生产物、注册系统调用和注册状态；CLI 路径、退出码、
+  JSON/JSONL 字段、capabilities command 字符串和调度行为保持不变。
+- 将 Git 执行、克隆、检出、检查、远端、发现与结果类型，以及 CLI invocation/command/领域参数、
+  report 结果/JSONL/机器输出/文本输出、automation 选项/协议输出/错误分类边界拆分为 facade 后的
+  独立模块；新增默认启用的 `schedule` Cargo feature，普通构建保持完整命令面，精简构建可条件
+  编译移除调度命令和原生集成。
+
+### Validation
+
+- 增加顶层扁平命令面与完整 capabilities 命令名册回归，防止后续内部整理意外改名或引入嵌套路径。
+- 增加无默认 features 的编译、CLI 命令面和 capabilities 名册验证；默认 features 继续执行完整
+  schedule、automation protocol 与 MVP 回归。
+
 ## [0.4.3] - 2026-08-06
 
 ### Added

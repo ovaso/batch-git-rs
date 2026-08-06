@@ -24,6 +24,10 @@ include = [
     "build.sh",
 ]
 
+[features]
+default = ["schedule"]
+schedule = []
+
 [dependencies]
 anyhow = "1"
 chrono = "0.4"

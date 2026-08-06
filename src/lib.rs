@@ -10,6 +10,7 @@ mod git;
 mod model;
 mod parallel;
 mod report;
+#[cfg(feature = "schedule")]
 mod schedule;
 mod selector;
 mod settings;

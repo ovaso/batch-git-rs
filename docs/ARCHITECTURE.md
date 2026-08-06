@@ -19,19 +19,38 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
 
 ## 模块职责
 
-- `cli` 解析内建命令，并在显式 `--` 处分离原生 Git 透传。
-- `automation` 定义版本化 JSON/JSONL envelope、结构化顶层错误、request ID、plan/apply
-  revision 前置条件和子 Git 进程执行约束。
+- `cli` 通过 facade 保持 `crate::cli::*` 稳定；`invocation` 在显式 `--` 处分离原生 Git 透传，
+  `command` 定义 clap 顶层命令面，`args` 按自动化、工作区、同步、分支、查询、执行和 schedule
+  领域保存参数模型。
+- `automation` facade 保持协议调用路径稳定；`options` 负责输出格式、request ID、timeout 与
+  plan/apply 选项校验，`output` 只负责 v1 JSON envelope、JSONL 生命周期和 workspace revision
+  上下文序列化，`error` 集中稳定错误分类与 URL user-info 脱敏。
 - `settings` 统一处理 CLI、环境变量和默认值的优先级；`env list` 复用同一解析路径展示最终生效值，
   不维护第二份运行配置。
-- `commands` 编排工作区命令；单仓库失败应转为可聚合结果，不能取消其他仓库。
+- `commands` 只在 `mod.rs` 保留顶层分派、plan/apply revision 校验、统一子进程策略与批量进度；
+  `plan`、`automation_commands`、`remote`、`changes`、`branches` 和 `exec` 分别承载对应领域工作流。
+  `workspace_commands` 再按 clone、scan、restore、manifest membership 与共享路径/命名不变量拆分；
+  `inspect` 只作为 facade，list、status、find、info、branch 各自维护查询数据模型和失败语义。
+  单仓库失败应转为可聚合结果，不能取消其他仓库。
 - `workspace` 负责根目录发现、排他锁和 `workspace.toml` 原子替换。
 - `model` 定义 schema version 1、跨字段校验和可序列化模型。
-- `git` 用 `git2` 读取本地状态、index 事实和仓库 operation 状态，用系统 Git 执行
-  add/commit/unstage、merge/pull/push、clone/fetch 等网络操作和兼容性敏感透传。
-- `schedule` 将声明翻译为 launchd、systemd user timer 或 Windows Task Scheduler，并维护
-  本地注册摘要；不把系统路径写入共享清单。
-- `parallel` 保证并发上限和输入顺序收集；`report`/`table` 保证稳定、可读的结果输出。
+- `git` facade 保持调用路径稳定；`types` 是值对象，`execution` 统一系统 Git 环境隔离、交互和
+  timeout，`clone`、`checkout`、`inspect`、`remotes`、`discovery` 分别承担克隆、分支切换、
+  只读事实、远端配置和工作树发现。add/commit/unstage、merge/pull/push 等仍由命令层通过统一
+  执行策略调用系统 Git。
+- `schedule` 的 `commands` facade 使用一次调用一个轻量 `CommandContext`，统一并发、输出和 revision
+  策略；其下 `declarations`、`execution`、`query`、`native`、`support` 分别处理清单声明、计划/运行、
+  只读查询、本机任务生命周期和纯查找/显示规则。`artifact` 明确生成 launchd、systemd user timer
+  与 Windows Task Scheduler 定义，`registration` 隔离原生系统调用，`state` 维护并校验本地注册
+  摘要；任何系统路径都不写入共享清单。
+- `parallel` 保证并发上限和输入顺序收集；`report` 由 `result`、`jsonl`、`machine`、`text` 和
+  `child_output` 分离业务结果、生命周期、协议序列化、文本摘要和子进程输出块；`table` 负责稳定
+  对齐。
+
+默认 Cargo feature `schedule` 编译完整调度命令和原生集成；关闭默认 features 时，CLI 和
+`capabilities.commands` 同时移除 schedule，但 `model` 仍解析并保留清单中的 schedule 声明。
+launchd、systemd 和 Windows artifact 均保留跨平台生成能力，只有真实宿主系统差异使用
+`target_os` 条件编译。
 
 `--output json` 的输出边界在 `automation`：成功调用只能产生一个 receipt，错误也由库入口
 转换为结构化 document。`report` 将批量 `RepositoryResult` 映射为稳定的 per-repository
@@ -78,3 +97,5 @@ reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、fil
 - v1 JSON / JSONL 输出和公开 schema 是 automation contract；仅新增可选字段可在同主版本内发布。
 - 新的 scheduler 平台应实现生成、验证、注册、状态和安全反注册，并在目标平台 CI 测试。
 - 新命令必须定义选择器、并发、退出码、部分失败和文档行为，不能只提供 happy path。
+- 命令帮助与元数据的后续整理按 [命令组织计划](COMMAND_ORGANIZATION_PLAN.md) 演进；在该计划
+  明确进入实施阶段前，不引入嵌套命令路径，也不改变现有命令字符串。
