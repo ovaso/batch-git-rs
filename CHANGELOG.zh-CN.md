@@ -16,6 +16,7 @@
 
 ### Changed
 
+- 将文档声明和 CI 验证的最低 Rust 版本从 1.85 提升到 1.88，与当前源码使用的语言特性保持一致。
 - 将命令编排按 plan、自动化发现、工作区生命周期、只读查询、同步/远端、暂存提交、分支与 Git
   透传拆分为独立模块；工作区生命周期进一步分离 clone、scan、restore 和清单 membership，只读
   查询分离 list、status、find、info 和 branch。schedule 命令再按声明、执行、查询、本机生命周期

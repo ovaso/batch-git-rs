@@ -64,7 +64,7 @@ PowerShell 可 dot-source `<prefix>\share\batch-git\completions\batch-git.ps1`�
 
 ### 2.2 从源码构建
 
-源码构建另需 Rust 1.85 或更新工具链：
+源码构建另需 Rust 1.88 或更新工具链：
 
 ```sh
 cargo install --locked batch-git

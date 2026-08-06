@@ -78,11 +78,11 @@ jobs:
           test "$status" -eq 2
 
   msrv:
-    name: MSRV (1.85)
+    name: MSRV (1.88)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
+      - uses: dtolnay/rust-toolchain@1.88
       - name: Test minimum supported Rust version
         run: cargo test --locked
 
