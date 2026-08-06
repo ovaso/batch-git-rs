@@ -124,9 +124,9 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:<commit-plan
   ff-only 更新当前目标分支，`--refresh-source` / `--rs` 会 fetch 后将最新 remote-tracking 来源
   合入当前分支，不移动本地来源分支。当前目标没有 upstream 的仅本地分支使用 `--uc` 时会跳过 pull，
   并继续合并来源。`--default` 按仓库读取清单默认分支；未使用 `--rs` 时本地
-  不存在才回退到各自 `primary_remote`。两个行为的环境默认值可由
-  `BATCH_GIT_MERGE_UPDATE_CURRENT` / `BATCH_GIT_MERGE_REFRESH_SOURCE` 设置，但 CLI 的启用或
-  `--no-*` 关闭选项优先。不要自动解决、abort 或继续冲突。
+  不存在才回退到各自 `primary_remote`。`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE`（默认 true）只影响
+  `merge --default` 的来源刷新，`BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT`（默认 false）只影响
+  `merge --feature` 的当前分支更新；CLI 的启用或 `--no-*` 关闭选项优先。不要自动解决、abort 或继续冲突。
 - schedule 使用其专用流程：`schedule plan` → `doctor` → `generate` 或 `register --dry-run` →
   明确授权后的 `register`。不要使用全局 `--plan schedule …`，该组合会被拒绝以避免语义混淆。
   `register`、`unregister`、`remove --unregister` 会改变原生调度器，必须单独得到授权。

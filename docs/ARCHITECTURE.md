@@ -54,6 +54,9 @@ fast-forward-only。`add` 只暂存全部非忽略的新增、修改和删除，
 fast-forward-only pull；没有 upstream 的仅本地分支会跳过此步骤。显式 `--refresh-source` / `--rs` 会 fetch 声明远端并合并最新的
 remote-tracking 来源分支，而不移动本地来源分支。两者都可能修改工作树，冲突一律保留给用户处理，
 不自动 abort、continue、rebase 或回滚。
+`merge --default` 默认启用来源刷新，可由 `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 关闭；
+`merge --feature` 默认不更新当前目标分支，可由 `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 开启。
+这两个按来源类型的默认值只在相应模式生效，显式 CLI 选项始终优先。
 
 commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产生 batch-git 无法分类的本地或外部
 副作用。系统 Git 的单仓库 index/ref lock 与工作区锁共同降低并发冲突，但外部原生 Git 不遵循

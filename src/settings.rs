@@ -78,25 +78,19 @@ pub(crate) fn schedule_timezone() -> Result<Option<String>> {
     }
 }
 
-/// 解析 merge 前是否先快进当前 tracking 分支。
-pub(crate) fn merge_update_current(cli_value: Option<bool>) -> Result<bool> {
-    if let Some(value) = cli_value {
-        return Ok(value);
-    }
-    match std::env::var("BATCH_GIT_MERGE_UPDATE_CURRENT") {
-        Ok(value) => parse_bool("BATCH_GIT_MERGE_UPDATE_CURRENT", &value),
-        Err(std::env::VarError::NotPresent) => Ok(false),
+/// 判断合并声明的默认分支时是否默认刷新其远端引用。
+pub(crate) fn merge_default_refresh_source() -> Result<bool> {
+    match std::env::var("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE") {
+        Ok(value) => parse_bool("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE", &value),
+        Err(std::env::VarError::NotPresent) => Ok(true),
         Err(error) => Err(error.into()),
     }
 }
 
-/// 解析 merge 前是否刷新远端来源分支。
-pub(crate) fn merge_refresh_source(cli_value: Option<bool>) -> Result<bool> {
-    if let Some(value) = cli_value {
-        return Ok(value);
-    }
-    match std::env::var("BATCH_GIT_MERGE_REFRESH_SOURCE") {
-        Ok(value) => parse_bool("BATCH_GIT_MERGE_REFRESH_SOURCE", &value),
+/// 判断通过 `merge --feature` 合并特性分支时是否默认先更新当前分支。
+pub(crate) fn merge_feature_update_current() -> Result<bool> {
+    match std::env::var("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT") {
+        Ok(value) => parse_bool("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", &value),
         Err(std::env::VarError::NotPresent) => Ok(false),
         Err(error) => Err(error.into()),
     }

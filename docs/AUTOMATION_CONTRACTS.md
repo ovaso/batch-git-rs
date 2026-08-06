@@ -170,14 +170,16 @@ commit plan 会原样包含调用方提供的消息，日志系统应按普通�
 `remote_fallback` 和 `source_refresh_remote`。`source_mode` 为 `explicit`、`feature_environment` 或
 `workspace_default`；最后一种模式按仓库读取清单中的 `default_branch`，因此不同仓库可以显示
 不同来源。`remote_fallback` 只是本地同名分支不存在时的远端解析范围，不表示 plan 已读取或
-锁定该远端引用；`source_refresh_remote` 仅在 `--refresh-source` / `--rs` 时出现，表示 apply 会
-fetch 后合并的远端。普通 merge 的 `parameters` 包含 `update_current` 与 `refresh_source` 布尔值；
+锁定该远端引用；`source_refresh_remote` 仅在有效的来源刷新开启时出现（显式
+`--refresh-source` / `--rs`，或 `merge --default` 的默认设置），表示 apply 会 fetch 后合并的远端。
+普通 merge 的 `parameters` 包含 `update_current` 与 `refresh_source` 布尔值；
 前者对应 `--update-current` / `--uc` 的 ff-only 目标分支更新，后者对应 `--refresh-source` / `--rs`
 的来源刷新。`merge --default` 使用各仓库的 `primary_remote`，普通 merge 未指定远端时刷新同样
 使用 `primary_remote`。对 `workspace_default`，apply 的 workspace revision 前置条件会防止清单中的
 分支或主远端在 plan 后静默漂移；显式参数和环境变量仍须由调用方在 apply 时保持一致。
-`BATCH_GIT_MERGE_UPDATE_CURRENT` 与 `BATCH_GIT_MERGE_REFRESH_SOURCE` 分别提供默认值；CLI 的
-启用或 `--no-*` 关闭选项优先，plan 中的两个布尔参数始终反映实际 apply 将采用的有效值。
+`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 只为 `merge --default` 提供来源刷新的默认值（默认 true）；
+`BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 只为 `merge --feature` 提供当前分支更新的默认值（默认 false）。
+CLI 的启用或 `--no-*` 关闭选项优先，plan 中的两个布尔参数始终反映实际 apply 将采用的有效值。
 当 `update_current` 为 true 而当前分支没有 upstream 时，该仓库会跳过 ff-only pull 并继续来源合并；
 该参数表示请求的行为，不保证每个仓库都实际启动 pull。
 

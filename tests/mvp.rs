@@ -542,7 +542,7 @@ fn forget_only_changes_the_manifest_and_unknown_commands_are_not_forwarded() {
 }
 
 #[test]
-fn merge_alias_optionally_updates_the_current_branch_first() {
+fn merge_feature_setting_optionally_updates_the_current_branch_first() {
     let fixture = Fixture::new("service-merge");
     let workspace = tempfile::tempdir().unwrap();
     git(
@@ -590,7 +590,8 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
     git(&repository, ["reset", "--hard", "origin/main"]);
     batch_git(workspace.path())
         .env("CURRENT_FEATURE_BRANCH", "feature")
-        .args(["merge", "--uc", "--feature"])
+        .env("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", "true")
+        .args(["merge", "--feature"])
         .assert()
         .success()
         .stdout(predicate::str::contains("service-merge  ok"));
@@ -966,49 +967,59 @@ fn merge_feature_without_an_environment_value_is_a_no_op() {
 }
 
 #[test]
-fn merge_cli_setting_overrides_and_validates_the_environment() {
+fn merge_source_specific_settings_are_overridden_by_cli_options() {
     let workspace = tempfile::tempdir().unwrap();
     batch_git(workspace.path())
         .args(["scan"])
         .assert()
         .success();
     batch_git(workspace.path())
-        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
-        .args(["merge", "feature"])
+        .env("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE", "invalid")
+        .args(["merge", "--default"])
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "invalid BATCH_GIT_MERGE_UPDATE_CURRENT value",
+            "invalid BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE value",
         ));
 
     batch_git(workspace.path())
-        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
-        .args(["merge", "--no-update-current", "feature"])
+        .env("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE", "invalid")
+        .args(["merge", "--no-refresh-source", "--default"])
         .assert()
         .success();
     batch_git(workspace.path())
-        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
-        .args(["merge", "--uc", "feature"])
+        .env("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE", "invalid")
+        .args(["merge", "--rs", "--default"])
         .assert()
         .success();
 
     batch_git(workspace.path())
-        .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
-        .args(["merge", "feature"])
+        .env("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", "invalid")
+        .env("CURRENT_FEATURE_BRANCH", "feature")
+        .args(["merge", "--feature"])
         .assert()
         .code(2)
         .stderr(predicate::str::contains(
-            "invalid BATCH_GIT_MERGE_REFRESH_SOURCE value",
+            "invalid BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT value",
         ));
 
     batch_git(workspace.path())
-        .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
-        .args(["merge", "--no-refresh-source", "feature"])
+        .env("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", "invalid")
+        .env("CURRENT_FEATURE_BRANCH", "feature")
+        .args(["merge", "--no-update-current", "--feature"])
         .assert()
         .success();
     batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", "invalid")
+        .env("CURRENT_FEATURE_BRANCH", "feature")
+        .args(["merge", "--uc", "--feature"])
+        .assert()
+        .success();
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
         .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
-        .args(["merge", "--rs", "feature"])
+        .args(["merge", "feature"])
         .assert()
         .success();
 }

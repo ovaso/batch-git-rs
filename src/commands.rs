@@ -257,17 +257,18 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
             let manifest = manifest
                 .as_ref()
                 .expect("merge requires a workspace manifest");
-            let update_current =
-                settings::merge_update_current(merge_update_current_setting(arguments))?;
-            let refresh_source =
-                settings::merge_refresh_source(merge_refresh_source_setting(arguments))?;
+            let merge_settings = merge_settings(arguments)?;
             let mut side_effects = vec!["working_trees", "local_refs", "workspace_manifest"];
-            if refresh_source || update_current {
+            if merge_settings.refresh_source || merge_settings.update_current {
                 side_effects.push("network");
             }
             (
                 "merge",
-                plan_merge_selection(&manifest.repositories, arguments, refresh_source)?,
+                plan_merge_selection(
+                    &manifest.repositories,
+                    arguments,
+                    merge_settings.refresh_source,
+                )?,
                 side_effects,
                 "working_tree",
             )
@@ -341,8 +342,8 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
             "moves_head": false,
         })),
         Command::Merge(arguments) => Some(json!({
-            "update_current": settings::merge_update_current(merge_update_current_setting(arguments))?,
-            "refresh_source": settings::merge_refresh_source(merge_refresh_source_setting(arguments))?,
+            "update_current": merge_settings(arguments)?.update_current,
+            "refresh_source": merge_settings(arguments)?.refresh_source,
         })),
         _ => None,
     };
@@ -568,6 +569,29 @@ fn merge_refresh_source_setting(arguments: &MergeArgs) -> Option<bool> {
     } else {
         None
     }
+}
+
+struct MergeSettings {
+    update_current: bool,
+    refresh_source: bool,
+}
+
+/// Resolve source-specific defaults first, then let explicit CLI flags override them.
+fn merge_settings(arguments: &MergeArgs) -> Result<MergeSettings> {
+    let update_current = match merge_update_current_setting(arguments) {
+        Some(value) => value,
+        None if arguments.feature => settings::merge_feature_update_current()?,
+        None => false,
+    };
+    let refresh_source = match merge_refresh_source_setting(arguments) {
+        Some(value) => value,
+        None if arguments.default => settings::merge_default_refresh_source()?,
+        None => false,
+    };
+    Ok(MergeSettings {
+        update_current,
+        refresh_source,
+    })
 }
 
 /// The operation-specific portion of a no-side-effect plan.
@@ -2216,8 +2240,9 @@ fn merge(
     verbose: bool,
     automation: &AutomationOptions,
 ) -> Result<i32> {
-    let update_current = settings::merge_update_current(merge_update_current_setting(&arguments))?;
-    let refresh_source = settings::merge_refresh_source(merge_refresh_source_setting(&arguments))?;
+    let merge_settings = merge_settings(&arguments)?;
+    let update_current = merge_settings.update_current;
+    let refresh_source = merge_settings.refresh_source;
     let MergeArgs {
         update_current: _,
         no_update_current: _,

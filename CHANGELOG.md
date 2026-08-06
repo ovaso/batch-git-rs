@@ -3,6 +3,16 @@
 本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
 [语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
+## [Unreleased]
+
+### Changed
+
+- 合并默认分支时，`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 默认开启，自动刷新并合并远端最新
+  default；通过 `merge --feature` 合并特性分支时，`BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 默认
+  关闭，仅在配置开启时更新当前分支。`--uc`、`--rs` 与各自 `--no-*` 选项始终优先。
+- 移除不区分来源类型的 `BATCH_GIT_MERGE_UPDATE_CURRENT` 与
+  `BATCH_GIT_MERGE_REFRESH_SOURCE` 环境变量。
+
 ## [0.4.2] - 2026-08-06
 
 ### Added
