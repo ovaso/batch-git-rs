@@ -6,7 +6,7 @@
 
 | Component | Supported baseline | Notes |
 |---|---:|---|
-| Rust | 1.85 | Minimum toolchain for Edition 2024; CI tests both this version and stable. |
+| Rust | 1.88 | Minimum toolchain required by the current source; CI tests both this version and stable. |
 | Git | 2.30+ | System Git is required for add, commit, restore/read-tree unstage, clone, fetch, pull, push, merge, and passthrough. Use a maintained current release when possible. |
 | workspace.toml | version 1 | The only currently supported manifest schema. |
 

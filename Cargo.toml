@@ -10,7 +10,7 @@ homepage = "https://github.com/livenv/batch-git"
 documentation = "https://github.com/livenv/batch-git/tree/main/docs"
 keywords = ["git", "workspace", "monorepo", "automation", "cli"]
 categories = ["command-line-utilities", "development-tools"]
-rust-version = "1.85"
+rust-version = "1.88"
 include = [
     "src/**",
     "tests/**",

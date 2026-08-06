@@ -66,7 +66,7 @@ custom prefix is not in the shell's default search path, add `<prefix>/share/zsh
 
 ### 2.2 Building from source
 
-Source builds additionally require Rust 1.85 or newer:
+Source builds additionally require Rust 1.88 or newer:
 
 ```sh
 cargo install --locked batch-git

@@ -6,7 +6,7 @@
 
 | 项目 | 支持基线 | 说明 |
 |---|---:|---|
-| Rust | 1.85 | Edition 2024 的最低工具链；CI 同时测试此版本和 stable。 |
+| Rust | 1.88 | 当前源码所需的最低工具链；CI 同时测试此版本和 stable。 |
 | Git | 2.30+ | 需要系统 Git 处理 add、commit、restore/read-tree unstage、clone、fetch、pull、push、merge 与透传；建议使用维护中的最新版。 |
 | workspace.toml | version 1 | 当前唯一支持的清单 schema。 |
 
