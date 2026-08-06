@@ -10,6 +10,7 @@ use serde_json::json;
 use super::{default_clone_directory, merge_settings, relative_string, select_exec_repositories};
 use crate::automation::{self, AutomationOptions};
 use crate::cli::{CloneArgs, Command, MergeArgs, ScanArgs};
+use crate::error::{ErrorCode, classified};
 use crate::git;
 use crate::model::{RepositoryRecord, WORKSPACE_FILE, Workspace, validate_directory};
 use crate::{settings, table, workspace};
@@ -23,14 +24,18 @@ pub(super) fn plan_command(
     jobs: usize,
     automation: &AutomationOptions,
 ) -> Result<i32> {
-    if !command.is_mutating() {
-        bail!("--plan is only valid for an operation with side effects");
-    }
     #[cfg(feature = "schedule")]
     if matches!(command, Command::Schedule(_)) {
-        bail!(
-            "use schedule plan <name>, schedule doctor, or a command-specific --dry-run for schedule operations"
-        );
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "use schedule plan <name>, schedule doctor, or a command-specific --dry-run for schedule operations",
+        ));
+    }
+    if !command.supports_global_plan() {
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "--plan is only valid for an operation with side effects",
+        ));
     }
     if feature_branch_is_unset(command)? {
         return render_feature_branch_unset_plan(command, automation);
@@ -361,7 +366,10 @@ fn plan_clone_selection(
     if let Some(depth) = arguments.depth
         && depth == 0
     {
-        bail!("--depth must be at least 1");
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "--depth must be at least 1",
+        ));
     }
     let directory = arguments
         .directory
@@ -377,7 +385,7 @@ fn plan_clone_selection(
     }) {
         bail!("repository directory is already registered: {directory_string}");
     }
-    let target = root.join(&directory);
+    let target = workspace::repository_path(root, &directory_string)?;
     if target.exists() {
         bail!("clone destination already exists: {}", target.display());
     }

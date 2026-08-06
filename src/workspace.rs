@@ -9,6 +9,7 @@ use fs2::FileExt;
 use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
+use crate::error::{ClassifyResult, ErrorCode, classified};
 use crate::model::{LOCK_FILE, WORKSPACE_FILE, Workspace, now};
 
 /// 通过持有文件句柄维持的进程级工作区独占锁。
@@ -37,7 +38,8 @@ impl WorkspaceLock {
         }
         // fs2 在 Unix 和 Windows 上分别映射到对应的原生文件锁机制。
         file.lock_exclusive()
-            .with_context(|| format!("failed to lock {}", path.display()))?;
+            .with_context(|| format!("failed to lock {}", path.display()))
+            .classify(ErrorCode::WorkspaceLocked)?;
         Ok(Self { _file: file })
     }
 
@@ -62,7 +64,9 @@ impl WorkspaceLock {
         match file.try_lock_exclusive() {
             Ok(()) => Ok(Some(Self { _file: file })),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
-            Err(error) => Err(error).with_context(|| format!("failed to lock {}", path.display())),
+            Err(error) => Err(error)
+                .with_context(|| format!("failed to lock {}", path.display()))
+                .classify(ErrorCode::WorkspaceLocked),
         }
     }
 }
@@ -80,10 +84,13 @@ pub fn find_root() -> Result<PathBuf> {
     let root = find_root_optional()?;
     match root.filter(|root| root.join(WORKSPACE_FILE).is_file()) {
         Some(root) => Ok(root),
-        None => bail!(
-            "no {} found in current directory or its parents",
-            WORKSPACE_FILE
-        ),
+        None => Err(classified(
+            ErrorCode::WorkspaceNotFound,
+            format!(
+                "no {} found in current directory or its parents",
+                WORKSPACE_FILE
+            ),
+        )),
     }
 }
 
@@ -139,11 +146,16 @@ pub fn read_with_revision(root: &Path) -> Result<(Workspace, String)> {
     let revision = revision_from_bytes(&bytes);
     let content = String::from_utf8(bytes)
         .with_context(|| format!("failed to decode {} as UTF-8", path.display()))?;
-    let workspace: Workspace =
-        toml::from_str(&content).with_context(|| format!("failed to parse {}", path.display()))?;
+    let workspace: Workspace = toml::from_str(&content)
+        .with_context(|| format!("failed to parse {}", path.display()))
+        .classify(ErrorCode::WorkspaceManifestInvalid)?;
     workspace
         .validate()
-        .with_context(|| format!("failed to validate {}", path.display()))?;
+        .with_context(|| format!("failed to validate {}", path.display()))
+        .classify(ErrorCode::WorkspaceManifestInvalid)?;
+    validate_repository_paths(root, &workspace)
+        .with_context(|| format!("failed to validate repository paths in {}", path.display()))
+        .classify(ErrorCode::WorkspaceManifestInvalid)?;
     Ok((workspace, revision))
 }
 
@@ -172,7 +184,10 @@ fn revision_from_bytes(content: &[u8]) -> String {
 pub fn verify_revision(root: &Path, expected: &str) -> Result<()> {
     let actual = revision(root)?;
     if actual != expected {
-        bail!("workspace revision changed; expected {expected}, found {actual}");
+        return Err(classified(
+            ErrorCode::StaleWorkspaceRevision,
+            format!("workspace revision changed; expected {expected}, found {actual}"),
+        ));
     }
     Ok(())
 }
@@ -184,6 +199,7 @@ pub fn write(root: &Path, workspace: &mut Workspace) -> Result<()> {
         .repositories
         .sort_by(|a, b| a.directory.cmp(&b.directory));
     workspace.validate()?;
+    validate_repository_paths(root, workspace)?;
     let content = toml::to_string_pretty(workspace).context("failed to encode workspace.toml")?;
     // 临时文件必须与目标同目录，才能依赖同一文件系统上的原子 rename。
     let mut temporary = NamedTempFile::new_in(root)
@@ -205,4 +221,135 @@ pub fn write(root: &Path, workspace: &mut Workspace) -> Result<()> {
         .and_then(|directory| directory.sync_all())
         .ok();
     Ok(())
+}
+
+/// Resolve one manifest directory without allowing a symlink to escape the workspace root.
+///
+/// Existing paths are returned in canonical form. For a missing repository, the nearest existing
+/// ancestor is canonicalized and checked before the workspace-local destination is returned. This
+/// permits symlinks that remain inside the workspace while rejecting both existing and prospective
+/// paths whose filesystem resolution crosses the workspace boundary.
+pub fn repository_path(root: &Path, directory: &str) -> Result<PathBuf> {
+    crate::model::validate_directory(directory)?;
+    let canonical_root = root
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize workspace root {}", root.display()))?;
+    let candidate = canonical_root.join(directory);
+    let mut existing_ancestor = candidate.as_path();
+    loop {
+        match fs::symlink_metadata(existing_ancestor) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                existing_ancestor = existing_ancestor.parent().ok_or_else(|| {
+                    anyhow::anyhow!("repository directory has no existing ancestor: {directory}")
+                })?;
+            }
+            Err(error) => {
+                return Err(error).with_context(|| {
+                    format!(
+                        "failed to inspect repository path ancestor {}",
+                        existing_ancestor.display()
+                    )
+                });
+            }
+        }
+    }
+    let canonical_ancestor = existing_ancestor.canonicalize().with_context(|| {
+        format!(
+            "failed to canonicalize repository path ancestor {}",
+            existing_ancestor.display()
+        )
+    })?;
+    if !canonical_ancestor.starts_with(&canonical_root) {
+        bail!("repository directory resolves outside workspace: {directory}");
+    }
+    if existing_ancestor == candidate {
+        Ok(canonical_ancestor)
+    } else {
+        Ok(candidate)
+    }
+}
+
+fn validate_repository_paths(root: &Path, workspace: &Workspace) -> Result<()> {
+    for repository in &workspace.repositories {
+        repository_path(root, &repository.directory).with_context(|| {
+            format!(
+                "invalid repository directory for {}: {}",
+                repository.name, repository.directory
+            )
+        })?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::repository_path;
+    use anyhow::Result;
+    use tempfile::TempDir;
+
+    #[test]
+    fn resolves_missing_path_under_workspace() -> Result<()> {
+        let workspace = TempDir::new()?;
+        let expected = workspace.path().canonicalize()?.join("nested/repository");
+
+        assert_eq!(
+            repository_path(workspace.path(), "nested/repository")?,
+            expected
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn accepts_symlink_that_resolves_inside_workspace() -> Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TempDir::new()?;
+        let repository = workspace.path().join("repositories/service");
+        std::fs::create_dir_all(&repository)?;
+        symlink("repositories/service", workspace.path().join("service"))?;
+
+        assert_eq!(
+            repository_path(workspace.path(), "service")?,
+            repository.canonicalize()?
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlink_that_resolves_outside_workspace() -> Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TempDir::new()?;
+        let outside = TempDir::new()?;
+        symlink(outside.path(), workspace.path().join("service"))?;
+
+        let error = repository_path(workspace.path(), "service").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("repository directory resolves outside workspace")
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_missing_child_below_outside_symlink() -> Result<()> {
+        use std::os::unix::fs::symlink;
+
+        let workspace = TempDir::new()?;
+        let outside = TempDir::new()?;
+        symlink(outside.path(), workspace.path().join("repositories"))?;
+
+        let error = repository_path(workspace.path(), "repositories/service").unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("repository directory resolves outside workspace")
+        );
+        Ok(())
+    }
 }

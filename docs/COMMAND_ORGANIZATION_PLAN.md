@@ -19,16 +19,16 @@ capabilities command 字符串或 schedule 行为，也不把现有命令改成 
 - 不改变 plan/apply、选择器、并发、退出码、JSON/JSONL、reason code、capabilities 或 schema；
 - 不为命令分类引入第二份持久化状态，`workspace.toml` 仍是唯一工作区事实来源。
 
-## 计划阶段
+## 实施状态与后续阶段
 
 ### 1. 冻结公开命令面
 
 以黑盒测试锁定顶层命令路径和 capabilities 中的稳定 command 字符串。任何后续实现都必须先证明
 现有调用仍可解析，并运行 `tests/automation_protocol.rs` 与主要端到端工作流。
 
-### 2. 设计单一命令元数据来源
+### 2. 单一命令元数据来源（已实施内部边界）
 
-先设计、不立即替换现有实现。候选模型应能从同一条命令描述派生或校验：
+`cli::metadata` 已以编译期表集中并派生或校验：
 
 - 规范 command 字符串和兼容别名；
 - 是否可能产生副作用，以及全局 `--plan` / `--apply` 是否适用；
@@ -36,8 +36,8 @@ capabilities command 字符串或 schedule 行为，也不把现有命令改成 
 - capabilities 是否公开；
 - dispatch 与 plan 是否已有处理分支。
 
-该模型只保存编译期元数据，不保存运行状态。实施前需评估 clap 派生宏与静态注册表之间的重复，
-优先采用“编译期校验现有枚举覆盖完整”而不是引入复杂动态注册机制。
+该模型只保存编译期元数据，不保存运行状态。clap 参数类型、dispatch 和 plan 仍使用穷尽 match，
+由编译器保证新增枚举变体必须补齐；测试校验 clap 顶层名册与元数据完全一致。没有引入动态注册表。
 
 ### 3. 增加非破坏性帮助索引
 

@@ -4,6 +4,8 @@ use std::env;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result, bail};
+
+use crate::error::{ClassifyResult, ErrorCode};
 /// 默认并发仓库数。
 pub(crate) const DEFAULT_JOBS: usize = 4;
 /// 默认只扫描工作区根目录下一层。
@@ -173,7 +175,12 @@ pub(crate) fn home_directory() -> Result<PathBuf> {
 
 /// 解析并发数，优先级依次为 CLI、环境变量、默认值。
 pub(crate) fn jobs(cli_value: Option<usize>) -> Result<usize> {
-    positive_usize("jobs", cli_value, "BATCH_GIT_JOBS", DEFAULT_JOBS)
+    let result = positive_usize("jobs", cli_value, "BATCH_GIT_JOBS", DEFAULT_JOBS);
+    if cli_value.is_some() {
+        result.classify(ErrorCode::InvalidArguments)
+    } else {
+        result
+    }
 }
 
 /// 解析仓库扫描深度。

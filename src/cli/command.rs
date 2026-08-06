@@ -7,6 +7,7 @@ use crate::automation::{self, OutputFormat};
 
 use super::args::*;
 use super::invocation::RuntimeOptions;
+use super::metadata::CommandKind;
 
 /// clap 解析后的顶层命令行结构。
 #[derive(Debug, Parser)]
@@ -149,36 +150,50 @@ impl Cli {
 }
 
 impl Command {
+    /// Return the payload-independent command family used by compile-time metadata.
+    pub(crate) fn kind(&self) -> CommandKind {
+        match self {
+            Self::Add(_) => CommandKind::Add,
+            Self::Branch(_) => CommandKind::Branch,
+            Self::Capabilities => CommandKind::Capabilities,
+            Self::Cd => CommandKind::Cd,
+            Self::Cf => CommandKind::Cf,
+            Self::Checkout(_) => CommandKind::Checkout,
+            Self::Clone(_) => CommandKind::Clone,
+            Self::Commit(_) => CommandKind::Commit,
+            Self::Env(_) => CommandKind::Env,
+            Self::Exec(_) => CommandKind::Exec,
+            Self::Fetch => CommandKind::Fetch,
+            Self::Find(_) => CommandKind::Find,
+            Self::Forget(_) => CommandKind::Forget,
+            Self::Info(_) => CommandKind::Info,
+            Self::List(_) => CommandKind::List,
+            Self::Merge(_) => CommandKind::Merge,
+            Self::Pull(_) => CommandKind::Pull,
+            Self::Push(_) => CommandKind::Push,
+            Self::Restore => CommandKind::Restore,
+            Self::Scan(_) => CommandKind::Scan,
+            #[cfg(feature = "schedule")]
+            Self::Schedule(_) => CommandKind::Schedule,
+            Self::Schema(_) => CommandKind::Schema,
+            Self::Status(_) => CommandKind::Status,
+            Self::Sync(_) => CommandKind::Sync,
+            Self::Unstage(_) => CommandKind::Unstage,
+        }
+    }
+
     /// Identify commands that can write the manifest, repositories, remotes, or scheduler state.
     pub fn is_mutating(&self) -> bool {
-        match self {
-            Self::Branch(_)
-            | Self::Capabilities
-            | Self::Env(_)
-            | Self::Find(_)
-            | Self::Info(_)
-            | Self::List(_)
-            | Self::Schema(_)
-            | Self::Status(_) => false,
-            #[cfg(feature = "schedule")]
-            Self::Schedule(arguments) => arguments.command.is_mutating(),
-            Self::Add(_)
-            | Self::Clone(_)
-            | Self::Commit(_)
-            | Self::Cd
-            | Self::Cf
-            | Self::Checkout(_)
-            | Self::Exec(_)
-            | Self::Fetch
-            | Self::Forget(_)
-            | Self::Merge(_)
-            | Self::Pull(_)
-            | Self::Push(_)
-            | Self::Restore
-            | Self::Scan(_)
-            | Self::Sync(_)
-            | Self::Unstage(_) => true,
+        #[cfg(feature = "schedule")]
+        if let Self::Schedule(arguments) = self {
+            return arguments.command.is_mutating();
         }
+        self.kind().metadata().mutating
+    }
+
+    /// Whether the global plan/apply protocol has a complete handler for this command family.
+    pub(crate) fn supports_global_plan(&self) -> bool {
+        self.kind().metadata().global_plan
     }
 }
 
@@ -187,6 +202,7 @@ mod tests {
     use clap::CommandFactory;
 
     use super::Cli;
+    use crate::cli::command_metadata;
 
     #[test]
     fn help_commands_are_alphabetically_sorted() {
@@ -245,6 +261,33 @@ mod tests {
         assert_eq!(
             names, expected,
             "command organization changes must not introduce nested command paths"
+        );
+    }
+
+    #[test]
+    fn clap_surface_and_command_metadata_have_identical_canonical_names() {
+        let clap = Cli::command();
+        let clap_names = clap
+            .get_subcommands()
+            .map(|command| command.get_name().to_owned())
+            .collect::<Vec<_>>();
+        let metadata_names = command_metadata()
+            .iter()
+            .map(|command| command.name.to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(clap_names, metadata_names);
+        for (clap_command, metadata) in clap.get_subcommands().zip(command_metadata()) {
+            assert_eq!(
+                clap_command.get_visible_aliases().collect::<Vec<_>>(),
+                metadata.aliases,
+                "aliases differ for {}",
+                metadata.name
+            );
+        }
+        assert!(
+            command_metadata()
+                .iter()
+                .all(|command| !command.global_plan || command.mutating)
         );
     }
 

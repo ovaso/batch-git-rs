@@ -1,19 +1,18 @@
 //! Explicit Git passthrough and selected repository execution.
 
-use std::collections::HashSet;
 use std::ffi::OsString;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use super::{
-    git_execution_options, map_repository_results, plan_passthrough, verify_apply_revision,
+    git_execution_options, map_repository_results, plan_passthrough, select_exec_repositories,
+    verify_apply_revision,
 };
 use crate::automation::AutomationOptions;
 use crate::cli::{ExecArgs, RuntimeOptions};
 use crate::git::{self, GitOutput};
 use crate::model::RepositoryRecord;
 use crate::report::{RepositoryResult, print_results, print_selected_results};
-use crate::selector::wildcard_matches;
 use crate::settings;
 use crate::workspace::{self, WorkspaceLock};
 
@@ -37,13 +36,12 @@ pub fn passthrough(args: Vec<OsString>, options: RuntimeOptions) -> Result<i32> 
         &automation,
         "passthrough",
         &root,
-        |repository| {
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+        |repository, path| {
+            if !git::is_repository(path) {
                 return RepositoryResult::skipped(repository, "repository is not materialized");
             }
             match git::run_os_with_options(
-                &path,
+                path,
                 &args,
                 false,
                 git_execution_options(&automation, jobs == 1),
@@ -67,60 +65,19 @@ pub(super) fn exec(
     let _lock = WorkspaceLock::acquire(&root)?;
     verify_apply_revision(&root, automation)?;
     let workspace = workspace::read(&root)?;
-    let mut selected = HashSet::new();
-
-    for selector in &arguments.selectors {
-        let matches = workspace
-            .repositories
-            .iter()
-            .enumerate()
-            .filter_map(|(index, repository)| {
-                (repository.name == *selector || repository.directory == *selector).then_some(index)
-            })
-            .collect::<Vec<_>>();
-        match matches.as_slice() {
-            [index] => {
-                selected.insert(*index);
-            }
-            [] => bail!("unknown repository selector: {selector}"),
-            _ => bail!("ambiguous repository selector: {selector}"),
-        }
-    }
-
-    for pattern in &arguments.matches {
-        let matches = workspace
-            .repositories
-            .iter()
-            .enumerate()
-            .filter_map(|(index, repository)| {
-                wildcard_matches(pattern, &repository.name).then_some(index)
-            })
-            .collect::<Vec<_>>();
-        if matches.is_empty() {
-            bail!("repository pattern matched nothing: {pattern}");
-        }
-        selected.extend(matches);
-    }
-
-    let repositories = workspace
-        .repositories
-        .iter()
-        .enumerate()
-        .filter_map(|(index, repository)| selected.contains(&index).then_some(repository.clone()))
-        .collect::<Vec<_>>();
+    let repositories = select_exec_repositories(&workspace, &arguments)?;
     let results = map_repository_results(
         &repositories,
         jobs,
         automation,
         "exec",
         &root,
-        |repository| {
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+        |repository, path| {
+            if !git::is_repository(path) {
                 return RepositoryResult::failed(repository, "repository is not materialized");
             }
             match git::run_os_with_options(
-                &path,
+                path,
                 &arguments.git_args,
                 false,
                 git_execution_options(automation, jobs == 1),

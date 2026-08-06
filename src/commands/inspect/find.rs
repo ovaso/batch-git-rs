@@ -58,7 +58,10 @@ pub(in crate::commands) fn find(
     let include_local = !arguments.remote;
     let include_remote = !arguments.local;
     let scans = map_ordered(&repositories, jobs, |repository| {
-        let path = root.join(&repository.directory);
+        let path = match workspace::repository_path(&root, &repository.directory) {
+            Ok(path) => path,
+            Err(_) => return (repository.clone(), None),
+        };
         if !git::is_repository(&path) {
             return (repository.clone(), None);
         }

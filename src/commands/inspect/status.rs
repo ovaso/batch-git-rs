@@ -72,7 +72,20 @@ pub(in crate::commands) fn status(
     let manifest = workspace::read(&root)?;
     let feature_branch = settings::current_feature_branch()?;
     let statuses = map_ordered(&manifest.repositories, jobs, |repository| {
-        let path = root.join(&repository.directory);
+        let path = match workspace::repository_path(&root, &repository.directory) {
+            Ok(path) => path,
+            Err(_) => {
+                return WorkspaceStatusRow {
+                    repository: repository.name.clone(),
+                    branch: "-".to_owned(),
+                    default_branch: repository.default_branch.clone(),
+                    kind: WorkspaceStatusKind::Error,
+                    changes: "-".to_owned(),
+                    upstream: "-".to_owned(),
+                    changed_paths: 0,
+                };
+            }
+        };
         if !path.exists() {
             return WorkspaceStatusRow {
                 repository: repository.name.clone(),

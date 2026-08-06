@@ -42,7 +42,7 @@ all = true
 | 字段 | 必需 | 说明 |
 |---|---|---|
 | `name` | 是 | 工作区内唯一的仓库名称 |
-| `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..` |
+| `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..`；真实路径也不得经 symlink 解析到工作区外 |
 | `default_branch` | 是 | `checkout --default` 的目标分支，也是 `merge --default` 的源分支 |
 | `primary_remote` | 是 | 主远端名称，必须存在于 `remotes` 中；缺省按 `origin` 读取 |
 | `created_at` | 是 | RFC 3339 时间 |

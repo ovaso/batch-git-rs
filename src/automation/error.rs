@@ -1,4 +1,6 @@
-//! Stable top-level error classification and diagnostic sanitization.
+//! Stable top-level error descriptors and diagnostic sanitization.
+
+use crate::error::{ClassifiedError, ErrorCode};
 
 pub(super) struct ErrorDescriptor {
     pub(super) code: &'static str,
@@ -6,108 +8,68 @@ pub(super) struct ErrorDescriptor {
     pub(super) hint: Option<&'static str>,
 }
 
-pub(super) fn error_descriptor(message: &str) -> ErrorDescriptor {
-    let lower = message.to_ascii_lowercase();
-    if lower.contains("workspace revision changed") {
-        ErrorDescriptor {
+pub(super) fn error_descriptor(error: &anyhow::Error) -> ErrorDescriptor {
+    let code = error
+        .downcast_ref::<ClassifiedError>()
+        .map(ClassifiedError::code);
+    match code {
+        Some(ErrorCode::StaleWorkspaceRevision) => ErrorDescriptor {
             code: "stale_workspace_revision",
             retryable: true,
             hint: Some("Run the plan again and apply the new workspace revision."),
-        }
-    } else if is_invalid_argument_message(&lower) {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::InvalidArguments) => ErrorDescriptor {
             code: "invalid_arguments",
             retryable: false,
             hint: None,
-        }
-    } else if lower.contains("unknown repository selector") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::UnknownRepository) => ErrorDescriptor {
             code: "unknown_repository",
             retryable: false,
             hint: Some("Use list --output json to inspect canonical repository names."),
-        }
-    } else if lower.contains("ambiguous repository selector") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::AmbiguousRepository) => ErrorDescriptor {
             code: "ambiguous_repository",
             retryable: false,
             hint: Some("Use a canonical repository name or workspace-relative directory."),
-        }
-    } else if lower.contains("pattern matched nothing") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::SelectorNoMatch) => ErrorDescriptor {
             code: "selector_no_match",
             retryable: false,
             hint: Some("Inspect names with list --output json before retrying."),
-        }
-    } else if lower.contains("no workspace.toml found") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::WorkspaceNotFound) => ErrorDescriptor {
             code: "workspace_not_found",
             retryable: false,
             hint: Some("Run scan or set BATCH_GIT_WORKSPACE to an existing workspace."),
-        }
-    } else if lower.contains("workspace.toml")
-        && (lower.contains("parse") || lower.contains("invalid") || lower.contains("validate"))
-    {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::WorkspaceManifestInvalid) => ErrorDescriptor {
             code: "workspace_manifest_invalid",
             retryable: false,
             hint: Some("Fix workspace.toml and retry."),
-        }
-    } else if lower.contains("timed out") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::Timeout) => ErrorDescriptor {
             code: "timeout",
             retryable: true,
             hint: Some("Retry with a larger --timeout after checking connectivity."),
-        }
-    } else if lower.contains("lock") {
-        ErrorDescriptor {
+        },
+        Some(ErrorCode::WorkspaceLocked) => ErrorDescriptor {
             code: "workspace_locked",
             retryable: true,
             hint: Some("Wait for the other batch-git operation to finish and retry."),
-        }
-    } else if lower.contains("schedule") {
-        ErrorDescriptor {
+        },
+        #[cfg(feature = "schedule")]
+        Some(ErrorCode::ScheduleInvalid) => ErrorDescriptor {
             code: "schedule_invalid",
             retryable: false,
             hint: None,
-        }
-    } else {
-        ErrorDescriptor {
+        },
+        None => ErrorDescriptor {
             code: "operation_failed",
             retryable: false,
             hint: None,
-        }
+        },
     }
-}
-
-fn is_invalid_argument_message(message: &str) -> bool {
-    [
-        "invalid arguments",
-        "unexpected argument",
-        "invalid timeout:",
-        "timeout must be",
-        "timeout unit must be",
-        "timeout is too large",
-        "request id must contain",
-        "invalid --jobs value",
-        "jobs must be at least 1",
-        "--jobs requires a value",
-        "--output requires a value",
-        "--timeout requires a value",
-        "--request-id requires a value",
-        "--expect-workspace-revision requires a value",
-        "invalid output format:",
-        "--plan is only valid",
-        "--plan conflicts with --apply",
-        "--apply is only valid",
-        "--apply requires --expect-workspace-revision",
-        "--expect-workspace-revision requires --apply",
-        "--all cannot be combined with repository selectors or --match",
-        "commit message cannot be empty",
-        "git passthrough requires arguments after --",
-        "use schedule plan ",
-    ]
-    .iter()
-    .any(|marker| message.contains(marker))
 }
 
 /// Remove URL user-info before including a diagnostic in a machine-readable protocol.
@@ -133,4 +95,24 @@ pub(crate) fn sanitize_message(message: &str) -> String {
     }
     result.push_str(remainder);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::error_descriptor;
+    use crate::error::{ErrorCode, classified};
+
+    #[test]
+    fn ordinary_words_do_not_change_the_error_code() {
+        let error = anyhow::anyhow!("failed to schedule a lock timeout report");
+        assert_eq!(error_descriptor(&error).code, "operation_failed");
+    }
+
+    #[test]
+    fn typed_errors_select_the_stable_descriptor() {
+        let error = classified(ErrorCode::Timeout, "child did not finish");
+        let descriptor = error_descriptor(&error);
+        assert_eq!(descriptor.code, "timeout");
+        assert!(descriptor.retryable);
+    }
 }

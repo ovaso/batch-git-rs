@@ -2,8 +2,9 @@
 
 use std::collections::HashSet;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
+use crate::error::{ErrorCode, classified};
 use crate::model::{RepositoryRecord, Workspace};
 
 /// 按名称、目录或 `*` 模式选择仓库，并按清单顺序去重。
@@ -14,7 +15,10 @@ pub(crate) fn select(
     all: bool,
 ) -> Result<Vec<RepositoryRecord>> {
     if all && (!selectors.is_empty() || !patterns.is_empty()) {
-        bail!("--all cannot be combined with repository selectors or --match");
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "--all cannot be combined with repository selectors or --match",
+        ));
     }
     if all || (selectors.is_empty() && patterns.is_empty()) {
         return Ok(workspace.repositories.clone());
@@ -35,8 +39,18 @@ pub(crate) fn select(
             [index] => {
                 selected.insert(*index);
             }
-            [] => bail!("unknown repository selector: {selector}"),
-            _ => bail!("ambiguous repository selector: {selector}"),
+            [] => {
+                return Err(classified(
+                    ErrorCode::UnknownRepository,
+                    format!("unknown repository selector: {selector}"),
+                ));
+            }
+            _ => {
+                return Err(classified(
+                    ErrorCode::AmbiguousRepository,
+                    format!("ambiguous repository selector: {selector}"),
+                ));
+            }
         }
     }
 
@@ -50,7 +64,10 @@ pub(crate) fn select(
             })
             .collect::<Vec<_>>();
         if matches.is_empty() {
-            bail!("repository pattern matched nothing: {pattern}");
+            return Err(classified(
+                ErrorCode::SelectorNoMatch,
+                format!("repository pattern matched nothing: {pattern}"),
+            ));
         }
         selected.extend(matches);
     }

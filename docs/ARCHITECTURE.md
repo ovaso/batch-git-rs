@@ -52,11 +52,17 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
 launchd、systemd 和 Windows artifact 均保留跨平台生成能力，只有真实宿主系统差异使用
 `target_os` 条件编译。
 
+`cli::metadata` 是规范命令名、兼容别名、可写性、全局 plan 支持和 capabilities 暴露的编译期
+事实来源；`Command::kind()`、dispatch 和 plan 保持穷尽 match，使新增枚举变体时由编译器强制
+补齐处理分支，而不引入动态注册表。
+
 `--output json` 的输出边界在 `automation`：成功调用只能产生一个 receipt，错误也由库入口
 转换为结构化 document。`report` 将批量 `RepositoryResult` 映射为稳定的 per-repository
 records，且不把子 Git stdout/stderr 放入协议。`--output jsonl` 在相同数据模型之上输出
 生命周期和仓库终态事件；`clone` 将其单个受控 Git 操作也建模为一个仓库事件，避免为单仓库
 操作提供不同的进度协议。
+顶层 `error.code` 只从错误链中的类型化分类读取，`anyhow` 继续承载上下文；自然语言变化或底层
+输出中偶然出现 `lock`、`schedule`、`timeout` 等词不会改变机器分类。
 
 ## 一致性与副作用
 
@@ -89,7 +95,12 @@ reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、fil
 提交消息或工作树保留属性，但不会冻结 HEAD、index 或工作树。它不保存额外账本、不会锁住远端，
 也不承诺跨仓库回滚。
 系统 Git 由 `GitExecutionOptions` 统一控制 stdin、`GIT_TERMINAL_PROMPT` 和单子进程 timeout；
-机器输出强制非交互，以免子进程流污染 JSON。
+机器输出强制非交互，以免子进程流污染 JSON。捕获线程始终排空 stdout/stderr，但每个流只保留
+1 MiB 的头尾诊断窗口，避免并发 `log`、`diff` 或错误输出导致无界内存增长。
+
+清单目录先经过词法相对路径校验，再由 `workspace::repository_path` 解析真实文件系统边界。
+已存在路径和最近存在祖先都必须 canonicalize 到工作区根内；工作区内 symlink 可用，指向外部的
+仓库或待创建子目录会在读取清单和每次仓库操作前被拒绝。
 
 ## 演进规则
 

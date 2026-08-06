@@ -2,11 +2,12 @@
 
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 
 use super::{git_execution_options, map_repository_results, verify_apply_revision};
 use crate::automation::AutomationOptions;
 use crate::cli::{CommitArgs, SyncArgs};
+use crate::error::{ErrorCode, classified};
 use crate::git;
 use crate::model::RepositoryRecord;
 use crate::report::{RepositoryResult, print_selected_results};
@@ -114,7 +115,10 @@ pub(super) fn commit(
 
 pub(super) fn validate_commit_message(message: &str) -> Result<()> {
     if message.trim().is_empty() {
-        bail!("commit message cannot be empty");
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "commit message cannot be empty",
+        ));
     }
     Ok(())
 }
@@ -187,16 +191,21 @@ where
         &arguments.matches,
         arguments.all,
     )?;
-    let results =
-        map_repository_results(&records, jobs, automation, command, &root, |repository| {
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+    let results = map_repository_results(
+        &records,
+        jobs,
+        automation,
+        command,
+        &root,
+        |repository, path| {
+            if !git::is_repository(path) {
                 return RepositoryResult::failed(
                     repository,
                     "repository is not materialized; run sync or restore",
                 );
             }
-            operation(repository, &path)
-        })?;
+            operation(repository, path)
+        },
+    )?;
     print_selected_results(&results, verbose, automation, command, &root)
 }

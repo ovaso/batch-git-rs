@@ -11,7 +11,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -45,14 +45,22 @@ jobs:
       - name: Package archive and checksum
         shell: bash
         run: |
-          mkdir dist
+          set -euo pipefail
+          mkdir -p dist/package/completions
           archive="batch-git-${{ matrix.target }}.tar.gz"
-          tar -C "target/${{ matrix.target }}/release" -czf "dist/${archive}" "${{ matrix.binary }}"
+          package="batch-git-${{ matrix.target }}"
+          mv dist/package "dist/${package}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${package}/"
+          cp LICENSE README.md "dist/${package}/"
+          cp completions/* "dist/${package}/completions/"
+          tar -C dist -czf "dist/${archive}" "${package}"
           if command -v sha256sum >/dev/null; then
-            sha256sum "dist/${archive}" > "dist/${archive}.sha256"
+            checksum=$(sha256sum "dist/${archive}" | awk '{print $1}')
           else
-            shasum -a 256 "dist/${archive}" > "dist/${archive}.sha256"
+            checksum=$(shasum -a 256 "dist/${archive}" | awk '{print $1}')
           fi
+          printf '%s  %s\n' "$checksum" "$archive" > "dist/${archive}.sha256"
+          rm -rf "dist/${package}"
       - uses: actions/upload-artifact@v4
         with:
           name: batch-git-${{ matrix.target }}
@@ -63,11 +71,11 @@ jobs:
     name: Publish GitHub Release
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
@@ -76,6 +84,21 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: test "v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')" = "$TAG"
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create combined checksums and include installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp install.sh install.ps1 dist/
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*.tar.gz
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}

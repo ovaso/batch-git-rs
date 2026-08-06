@@ -1,6 +1,18 @@
 use super::*;
 
 #[test]
+fn invalid_schedule_requests_keep_the_typed_machine_error_code() {
+    let fixture = WorkspaceFixture::new();
+    let output = run(
+        &fixture.workspace,
+        &["--output", "json", "schedule", "status", "missing"],
+    );
+    assert_eq!(output.status.code(), Some(2));
+    let receipt = json_output(output);
+    assert_eq!(receipt["error"]["code"], "schedule_invalid");
+}
+
+#[test]
 fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
     let fixture = WorkspaceFixture::new();
     fixture.add_daily_sync_schedule();

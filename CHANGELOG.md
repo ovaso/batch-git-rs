@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- release 归档加入 `LICENSE`、README 和 Bash/Zsh/Fish/PowerShell 补全；新增显式版本、无 sudo、
+  SHA-256 校验的 macOS/Linux 与 Windows 用户目录安装器，并由 release workflow 为最终归档签发
+  GitHub build provenance attestation；同时提供 cargo-binstall release 元数据。
+
 ### Changed
 
 - 将命令编排按 plan、自动化发现、工作区生命周期、只读查询、同步/远端、暂存提交、分支与 Git
@@ -16,12 +22,26 @@
   report 结果/JSONL/机器输出/文本输出、automation 选项/协议输出/错误分类边界拆分为 facade 后的
   独立模块；新增默认启用的 `schedule` Cargo feature，普通构建保持完整命令面，精简构建可条件
   编译移除调度命令和原生集成。
+- 以 `cli::metadata` 编译期表集中规范命令名、兼容别名、可写性、全局 plan 支持和 capabilities
+  暴露；dispatch 与 plan 继续保持穷尽 match，未改变 CLI 路径、command 字符串或公开语义。
+- Git 子进程 stdout/stderr 改为持续排空但各自最多保留 1 MiB 的头尾窗口，超限时插入稳定截断
+  标记，避免并发大输出造成无界内存增长。
+
+### Fixed
+
+- 清单仓库路径除词法校验外，还会校验现有路径或最近存在祖先的 canonical 路径；允许仍位于
+  工作区内的 symlink，拒绝通过 symlink 把现有仓库或 clone/restore 目标解析到工作区外。
+- 顶层机器错误码改由类型化 `ErrorCode` 决定，不再对自然语言消息执行 `lock`、`schedule`、
+  `timed out` 等字符串匹配，避免上下文文案导致误分类。
 
 ### Validation
 
 - 增加顶层扁平命令面与完整 capabilities 命令名册回归，防止后续内部整理意外改名或引入嵌套路径。
 - 增加无默认 features 的编译、CLI 命令面和 capabilities 名册验证；默认 features 继续执行完整
   schedule、automation protocol 与 MVP 回归。
+- CI 新增无默认 features 的 check、完整测试、Clippy、release build，以及精简帮助、capabilities
+  和缺失 schedule 命令的行为验证。
+- 增加工作区外 symlink 黑盒回归、类型化错误分类单元测试和多 MiB 子进程输出有界保留测试。
 
 ## [0.4.3] - 2026-08-06
 

@@ -36,9 +36,9 @@ pub(in crate::commands) fn list(
         .repositories
         .iter()
         .map(|repository| {
-            let path = root.join(&repository.directory);
+            let path = workspace::repository_path(&root, &repository.directory)?;
             let materialized = git::is_repository(&path);
-            ListRepository {
+            Ok(ListRepository {
                 name: &repository.name,
                 directory: &repository.directory,
                 default_branch: &repository.default_branch,
@@ -47,9 +47,9 @@ pub(in crate::commands) fn list(
                     .flatten(),
                 materialized,
                 synced_at: repository.synced_at.as_deref(),
-            }
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>>>()?;
     let output = ListOutput {
         workspace: root.to_string_lossy().into_owned(),
         jobs,

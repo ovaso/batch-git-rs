@@ -27,13 +27,48 @@ workspace/
 
 前置条件：
 
-- 可用的 Rust 工具链；
 - 系统 Git；
 - 使用定时任务时，macOS 需要 `launchd`，Linux 需要 `systemd --user`，Windows
   使用 Task Scheduler。Windows 首版不支持 cron 声明。
 - schedule 时区通过 `BATCH_GIT_TZ` 设置；未设置时使用系统时区。
 
+### 2.1 预编译 release
+
+Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 可使用正式 release。安装器要求明确
+`vX.Y.Z` 版本、验证 SHA-256、不调用 `sudo`，默认安装到用户目录：
+
 ```sh
+VERSION=vX.Y.Z
+curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+sh install.sh --version "$VERSION"
+```
+
+```powershell
+$Version = "vX.Y.Z"
+Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+.\install.ps1 -Version $Version
+```
+
+手工安装时，同时下载同名 `.sha256` 或统一 `SHA256SUMS`。GitHub CLI 可验证 release workflow
+签发的构建 provenance：
+
+```sh
+gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+```
+
+归档包含 `completions/`。Unix 安装器会安装 Bash、Zsh 和 Fish 补全；如果自定义前缀不在 shell
+默认搜索路径中，把 `<prefix>/share/zsh/site-functions` 加入 `fpath`，或直接 source 对应文件。
+PowerShell 可 dot-source `<prefix>\share\batch-git\completions\batch-git.ps1`。
+
+### 2.2 从源码构建
+
+源码构建另需 Rust 1.85 或更新工具链：
+
+```sh
+cargo install --locked batch-git
+# 已安装 cargo-binstall 时，可按 release 元数据选择预编译归档：
+cargo binstall batch-git
+
 cargo build --release
 ./target/release/batch-git --help
 ```
@@ -360,6 +395,8 @@ amend 或 rebase。
 
 `--timeout` 只终止直接 Git 子进程。hook、签名或 filter 后代可能继续运行；commit 也可能在
 更新 ref 后才因后续步骤超时。遇到 timeout 后应逐仓库检查 HEAD、index 和工作树，不要盲目重试。
+batch-git 会持续排空 Git stdout/stderr 以避免 pipe 死锁，但每个流最多保留 1 MiB；大输出只保留
+开头和结尾并带截断标记。需要完整 `log`、`diff` 或诊断文件时，请在精确仓库中显式重定向到文件。
 
 ## 8. 执行原生 Git
 

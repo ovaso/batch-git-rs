@@ -199,6 +199,35 @@ updated_at = "2026-01-01T00:00:00Z"
     assert_eq!(receipt["error"]["code"], "workspace_manifest_invalid");
 }
 
+#[cfg(unix)]
+#[test]
+fn workspace_manifest_rejects_repository_symlinks_outside_the_workspace() {
+    use std::os::unix::fs::symlink;
+
+    let fixture = WorkspaceFixture::new();
+    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .expect("read fixture manifest")
+        .replace("directory = \"service\"", "directory = \"escape\"");
+    fs::write(&manifest_path, manifest).expect("write escaped manifest path");
+    let outside = fixture
+        .workspace
+        .parent()
+        .expect("fixture workspace has a parent")
+        .join("service.git");
+    symlink(&outside, fixture.workspace.join("escape")).expect("create escaping symlink");
+
+    let output = run(&fixture.workspace, &["--output", "json", "list"]);
+    assert_eq!(output.status.code(), Some(2));
+    let receipt = json_output(output);
+    assert_eq!(receipt["error"]["code"], "workspace_manifest_invalid");
+    assert!(
+        receipt["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("resolves outside workspace"))
+    );
+}
+
 #[test]
 fn plan_restore_uses_the_same_invoking_root_as_restore() {
     let fixture = WorkspaceFixture::new();

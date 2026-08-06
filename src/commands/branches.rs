@@ -46,9 +46,8 @@ pub(super) fn checkout(
         automation,
         "checkout",
         &root,
-        |repository| {
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+        |repository, path| {
+            if !git::is_repository(path) {
                 return RepositoryResult::failed(
                     repository,
                     "repository is not materialized; run restore",
@@ -61,7 +60,7 @@ pub(super) fn checkout(
                 .unwrap_or(&repository.default_branch);
             if arguments.create {
                 return match git::create_and_checkout_branch(
-                    &path,
+                    path,
                     branch,
                     arguments.from.as_deref(),
                     remote.as_deref(),
@@ -79,7 +78,7 @@ pub(super) fn checkout(
             } else {
                 remote.as_deref()
             };
-            let target = match git::checkout_target(&path, branch, selected_remote) {
+            let target = match git::checkout_target(path, branch, selected_remote) {
                 Ok(target) => target,
                 Err(error) => return RepositoryResult::failed(repository, error.to_string()),
             };
@@ -91,14 +90,14 @@ pub(super) fn checkout(
                     repository,
                     format!("branch is ambiguous: {}", matches.join(", ")),
                 ),
-                CheckoutTarget::Local => match git::checkout_local(&path, branch) {
+                CheckoutTarget::Local => match git::checkout_local(path, branch) {
                     Ok(()) => {
                         RepositoryResult::success(repository, "checked out local branch", false)
                     }
                     Err(error) => RepositoryResult::failed(repository, error.to_string()),
                 },
                 CheckoutTarget::Remote(remote_branch) => {
-                    match git::checkout_remote(&path, branch, &remote_branch) {
+                    match git::checkout_remote(path, branch, &remote_branch) {
                         Ok(()) => RepositoryResult::success(
                             repository,
                             format!("created tracking branch from {remote_branch}"),
@@ -114,7 +113,10 @@ pub(super) fn checkout(
         .repositories
         .iter()
         .map(|repository| {
-            let path = root.join(&repository.directory);
+            let path = match workspace::repository_path(&root, &repository.directory) {
+                Ok(path) => path,
+                Err(_) => return "(unsafe)".to_owned(),
+            };
             if !path.exists() {
                 "(missing)".to_owned()
             } else if !git::is_repository(&path) {
@@ -184,20 +186,19 @@ pub(super) fn merge(
         automation,
         "merge",
         &root,
-        |repository| {
+        |repository, path| {
             let branch = if default {
                 repository.default_branch.as_str()
             } else {
                 shared_branch.expect("clap requires a branch, --feature, or --default")
             };
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+            if !git::is_repository(path) {
                 return RepositoryResult::failed(
                     repository,
                     "repository is not materialized; run restore",
                 );
             }
-            let status = match git::status_summary(&path) {
+            let status = match git::status_summary(path) {
                 Ok(status) => status,
                 Err(error) => return RepositoryResult::failed(repository, error.to_string()),
             };
@@ -236,7 +237,7 @@ pub(super) fn merge(
             let mut current_updated = false;
             if update_current && !matches!(status.upstream, UpstreamSummary::None) {
                 let output = match git::run_with_options(
-                    &path,
+                    path,
                     ["pull", "--ff-only"],
                     true,
                     git_execution_options(automation, jobs == 1),
@@ -262,14 +263,14 @@ pub(super) fn merge(
             };
             let source = if refresh_source {
                 if let Err(error) = git::configure_declared_remotes(
-                    &path,
+                    path,
                     repository,
                     git_execution_options(automation, jobs == 1).allow_stdin,
                 ) {
                     return RepositoryResult::failed(repository, error.to_string());
                 }
                 let output = match git::fetch_all_with_options(
-                    &path,
+                    path,
                     git_execution_options(automation, jobs == 1),
                 ) {
                     Ok(output) => output,
@@ -284,7 +285,7 @@ pub(super) fn merge(
                     );
                 }
                 let refresh_remote = remote.or(Some(repository.primary_remote.as_str()));
-                match git::remote_tracking_target(&path, branch, refresh_remote) {
+                match git::remote_tracking_target(path, branch, refresh_remote) {
                     Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
                     Ok(CheckoutTarget::Missing) => {
                         return RepositoryResult::skipped(
@@ -304,7 +305,7 @@ pub(super) fn merge(
                     Err(error) => return RepositoryResult::failed(repository, error.to_string()),
                 }
             } else {
-                match git::checkout_target(&path, branch, remote) {
+                match git::checkout_target(path, branch, remote) {
                     Ok(CheckoutTarget::Local) => branch.to_owned(),
                     Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
                     Ok(CheckoutTarget::Missing) => {
@@ -323,7 +324,7 @@ pub(super) fn merge(
                 }
             };
             match git::run_with_options(
-                &path,
+                path,
                 ["merge", "--no-edit", source.as_str()],
                 true,
                 git_execution_options(automation, jobs == 1),

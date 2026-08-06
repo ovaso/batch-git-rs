@@ -13,6 +13,7 @@ use serde::Serialize;
 
 use crate::automation::{self, AutomationOptions};
 use crate::cli::{ScheduleArgs, ScheduleCommand};
+use crate::error::{ClassifyResult, ErrorCode};
 use crate::workspace;
 
 #[cfg(test)]
@@ -82,4 +83,5 @@ pub(crate) fn dispatch(
         ScheduleCommand::Unregister(arguments) => native::unregister(arguments, &context),
         ScheduleCommand::Update(arguments) => declarations::update(arguments, &context),
     }
+    .classify(ErrorCode::ScheduleInvalid)
 }

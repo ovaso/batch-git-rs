@@ -26,9 +26,11 @@ detached HEAD、未解决冲突和进行中的 Git operation。内建 `add` 首�
 cargo fmt -- --check
 cargo test --locked
 cargo check --locked --no-default-features
-cargo test --locked --no-default-features --lib
+cargo test --locked --no-default-features
 cargo clippy --all-targets --all-features -- -D warnings
+cargo clippy --all-targets --no-default-features -- -D warnings
 cargo build --locked --release
+cargo build --locked --release --no-default-features
 ./target/release/batch-git --help
 ./target/release/batch-git add --help
 ./target/release/batch-git commit --help
@@ -43,8 +45,9 @@ cargo build --locked --release
 测试，以保留跨平台预览；只允许真实宿主系统调用使用 `target_os` 条件编译。
 
 发布前还应运行 `cargo deny check advisories bans licenses sources`。GitHub Actions 会在
-Linux 上执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建 release 产物；
-它还会生成可下载的 LCOV 覆盖率报告。tag `v*` 触发 GitHub Release 和 SHA-256 校验和生成。
+Linux 上分别对默认与无默认 features 执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建
+release 产物；它还会生成可下载的 LCOV 覆盖率报告。tag `v*` 触发带补全和许可证的 GitHub
+Release 归档、逐文件及统一 SHA-256、安装器和 GitHub build provenance attestation。
 
 发布构建还应检查动态依赖，确保没有意外链接本机构建环境中的 Homebrew、包管理器
 或其他非系统绝对路径。macOS 可使用 `otool -L target/release/batch-git`，Linux 可
@@ -96,6 +99,8 @@ Linux 上执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建 r
 - [ ] `cargo deny check advisories bans licenses sources` 通过；
 - [ ] CI 的 Linux、macOS、Windows release 构建均通过；
 - [ ] tag、GitHub Release、二进制名与 SHA-256 校验和相互对应；
+- [ ] `gh attestation verify <archive> --repo livenv/batch-git` 能验证发布归档；
+- [ ] `sh -n install.sh`、PowerShell parser 和四种补全文件检查通过；
 - [ ] `SECURITY.md`、`COMPATIBILITY.md` 和 automation contracts 仍与行为一致。
 
 ## 5. 构建和安装脚本
@@ -106,3 +111,8 @@ BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 
 脚本执行 release 构建，按需创建安装目录，并以可执行权限安装为
 `$BATCH_GIT_INSTALL_PATH/batch-git`。未设置安装目录或目标存在但不是目录时会失败。
+
+`install.sh` / `install.ps1` 面向已发布的预编译归档：必须显式指定 tag，下载归档及其同名
+`.sha256`，在用户可写前缀中安装二进制和补全，不会请求管理员权限。release workflow 将
+`LICENSE`、`README.md` 与 `completions/` 一并打包，并对最终归档签发 provenance；安装器本身
+只负责 SHA-256，强 provenance 验证由用户或 CI 通过 GitHub CLI单独执行。

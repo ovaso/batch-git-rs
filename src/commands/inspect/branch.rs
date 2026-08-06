@@ -17,7 +17,16 @@ pub(in crate::commands) fn branch(
     let manifest = workspace::read(&root)?;
     let feature_branch = settings::current_feature_branch()?;
     let states = map_ordered(&manifest.repositories, jobs, |repository| {
-        let path = root.join(&repository.directory);
+        let path = match workspace::repository_path(&root, &repository.directory) {
+            Ok(path) => path,
+            Err(_) => {
+                return (
+                    repository.name.clone(),
+                    repository.default_branch.clone(),
+                    "(unknown)".to_owned(),
+                );
+            }
+        };
         let state = if !path.exists() {
             "(missing)".to_owned()
         } else if !git::is_repository(&path) {

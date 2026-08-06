@@ -26,9 +26,41 @@ clone 或 restore 失败/超时时也不会递归删除目标目录；保留的�
 
 ## 安装
 
-需要 Rust 工具链和系统 Git。任选一种方式构建：
+正式 release 为 Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 提供预编译归档、
+SHA-256 校验和及 GitHub artifact attestation。安装器不会使用 `sudo`，且要求明确版本：
 
 ```sh
+# macOS / Linux：先下载并审阅安装器，再安装到 ~/.local。
+VERSION=vX.Y.Z
+curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+sh install.sh --version "$VERSION"
+
+# 可选：安装到其他用户可写前缀。
+sh install.sh --version "$VERSION" --prefix "$HOME/.local"
+```
+
+PowerShell：
+
+```powershell
+$Version = "vX.Y.Z"
+Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+.\install.ps1 -Version $Version
+```
+
+安装器会验证与归档一同发布的 SHA-256。也可从 [GitHub Releases](https://github.com/livenv/batch-git/releases)
+手工下载并校验；如已安装 GitHub CLI，可进一步验证签名 provenance：
+
+```sh
+gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+```
+
+从源码构建需要 Rust 工具链和系统 Git：
+
+```sh
+# crates.io 安装；也可用 cargo-binstall 读取 release 元数据安装预编译归档。
+cargo install --locked batch-git
+cargo binstall batch-git
+
 # 仅构建
 cargo build --release
 ./target/release/batch-git --version
@@ -39,6 +71,9 @@ cargo build --release --no-default-features
 # 构建并安装到指定目录
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
+
+release 归档同时包含 Bash、Zsh、Fish 和 PowerShell 补全；安装器会把当前平台的补全文件复制到
+用户前缀下。若 shell 未自动发现该前缀，请按[用户手册](docs/USER_GUIDE.md#2-安装与验证)加载。
 
 默认 feature 集包含 `schedule`，因此普通构建的命令面保持完整。关闭默认 features 只影响当前
 二进制是否提供 `schedule` 命令；`workspace.toml` 仍会解析并保留既有 schedule 声明，避免精简

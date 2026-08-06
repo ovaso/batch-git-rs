@@ -20,6 +20,11 @@ jobs:
           components: rustfmt, clippy
       - name: Check formatting
         run: cargo fmt -- --check
+      - name: Check installer and Bash completion syntax
+        shell: bash
+        run: |
+          sh -n install.sh
+          bash -n completions/batch-git.bash
       - name: Lint
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Test
@@ -32,6 +37,39 @@ jobs:
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check advisories bans licenses sources
+
+  minimal-features:
+    name: Minimal features (no schedule)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - name: Check minimal feature set
+        run: cargo check --locked --no-default-features
+      - name: Lint minimal feature set
+        run: cargo clippy --all-targets --no-default-features -- -D warnings
+      - name: Test minimal feature set
+        run: cargo test --locked --no-default-features
+      - name: Build minimal release
+        run: cargo build --locked --release --no-default-features
+      - name: Verify schedule is absent from the minimal CLI and capabilities
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./target/release/batch-git --help > help.txt
+          if grep -Eq '^  schedule([[:space:]]|$)' help.txt; then
+            echo "minimal help unexpectedly exposes schedule" >&2
+            exit 1
+          fi
+          ./target/release/batch-git --output json capabilities > capabilities.json
+          jq -e '.data.commands | index("schedule") == null' capabilities.json
+          set +e
+          ./target/release/batch-git schedule --help > schedule.stdout 2> schedule.stderr
+          status=$?
+          set -e
+          test "$status" -eq 2
 
   msrv:
     name: MSRV (1.85)
@@ -91,3 +129,21 @@ jobs:
             ./target/release/batch-git --version
             ./target/release/batch-git --help
           fi
+      - name: Check Zsh completion syntax
+        if: runner.os == 'macOS'
+        run: zsh -n completions/_batch-git
+      - name: Check PowerShell assets parse
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          foreach ($path in @('install.ps1', 'completions/batch-git.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $path, [ref]$tokens, [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -ne 0) {
+              $errors | ForEach-Object { Write-Error $_ }
+              exit 1
+            }
+          }

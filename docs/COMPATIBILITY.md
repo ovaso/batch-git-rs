@@ -12,11 +12,12 @@
 
 | 平台 | CLI | schedule 后端 | CI 构建 |
 |---|---|---|---|
-| Linux x86_64 | 支持 | `systemd --user` | 支持 |
-| macOS arm64/x86_64 | 支持 | `launchd` | 支持 |
-| Windows x86_64 | 支持 | Task Scheduler | 支持 |
+| Linux x86_64 | 支持 | `systemd --user` | release 归档 |
+| macOS arm64/x86_64 | 支持 | `launchd` | release 归档 |
+| Windows x86_64 | 支持 | Task Scheduler | release 归档 |
 
-CI 在三种操作系统构建 release 二进制；真实注册行为仍依赖 runner 用户权限和平台服务可用性。
+CI 在三种操作系统构建 release 二进制；归档包含许可证、README 和 Bash/Zsh/Fish/PowerShell
+补全，并发布逐文件与统一 SHA-256 以及 GitHub build provenance attestation。真实注册行为仍依赖 runner 用户权限和平台服务可用性。
 发布前应在目标平台执行 `schedule doctor`、`generate`，并按需人工验证 register/unregister。
 
 ## 已知平台约束

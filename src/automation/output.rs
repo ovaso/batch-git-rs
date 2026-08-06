@@ -209,7 +209,7 @@ pub(crate) fn emit_error(
     error: &anyhow::Error,
 ) -> Result<()> {
     let message = sanitize_message(&format!("{error:#}"));
-    let descriptor = error_descriptor(&message);
+    let descriptor = error_descriptor(error);
     let machine_error = MachineError {
         code: descriptor.code,
         message,

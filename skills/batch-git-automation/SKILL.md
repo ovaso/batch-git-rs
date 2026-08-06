@@ -61,7 +61,9 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
   也不能保证结束其认证、传输、filter、hook 或签名后代进程。commit timeout 后本地 ref 可能
   已经更新，必须重新检查 HEAD 和 index，不能盲目重试。
 - 使用 `status`、`reason_code`、`error.code` 和退出码决策。`detail` 与 `error.message` 仅用于
-  人类诊断，未来可演进。
+  人类诊断，未来可演进；顶层 code 来自类型化错误，不要从 message 关键词自行重分类。
+- 捕获的 Git stdout/stderr 可能在 1 MiB 后保留头尾并标记截断。机器 receipt 本身不携带原始
+  Git 输出；需要完整日志时，应在精确仓库中使用用户明确授权的专用日志方案。
 
 ## 选择与安全边界
 
@@ -75,6 +77,8 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 
 clone 或 restore 失败/超时时，目标目录会保留供人工检查，不能假定重试会覆盖或清理它；
 先确认内容并明确处理该目录，随后才能再次使用同一目标。
+清单仓库目录的真实路径必须保持在工作区内；不要通过 symlink 把仓库或 clone/restore 目标指向
+工作区外。遇到 `workspace_manifest_invalid` 时先检查相对路径和符号链接边界。
 
 `exec` 和顶层 `batch-git -- <git-args...>` 只能提供结构化结果外壳，风险为 `unclassified`。
 对这些逃生舱，默认只使用低风险只读 Git 命令；破坏性、历史改写或远端写入命令必须有用户针对

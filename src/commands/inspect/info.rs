@@ -1,11 +1,12 @@
 //! Workspace and single-repository metadata inspection.
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use serde::Serialize;
 
 use crate::automation::{self, AutomationOptions};
 use crate::cli::InfoArgs;
-use crate::git::{self, RepositoryRuntimeState};
+use crate::error::{ErrorCode, classified};
+use crate::git::{self, RepositoryRuntimeInfo, RepositoryRuntimeState};
 use crate::model::WORKSPACE_FILE;
 use crate::parallel::map_ordered;
 use crate::{color, settings, table, workspace};
@@ -68,9 +69,21 @@ pub(in crate::commands) fn info(
     let manifest = workspace::read(&root)?;
     let current_feature_branch = settings::current_feature_branch()?;
     let Some(selector) = arguments.repository.as_deref() else {
-        let runtime = map_ordered(&manifest.repositories, jobs, |repository| {
-            git::repository_runtime_info(&root.join(&repository.directory))
-        })?;
+        let runtime =
+            map_ordered(
+                &manifest.repositories,
+                jobs,
+                |repository| match workspace::repository_path(&root, &repository.directory) {
+                    Ok(path) => git::repository_runtime_info(&path),
+                    Err(_) => RepositoryRuntimeInfo {
+                        state: RepositoryRuntimeState::Error,
+                        current_branch: None,
+                        head: None,
+                        local_branches: None,
+                        remote_branches: None,
+                    },
+                },
+            )?;
         let count = |state| {
             runtime
                 .iter()
@@ -111,10 +124,20 @@ pub(in crate::commands) fn info(
         .collect::<Vec<_>>();
     let repository = match matches.as_slice() {
         [repository] => *repository,
-        [] => bail!("unknown repository selector: {selector}"),
-        _ => bail!("ambiguous repository selector: {selector}"),
+        [] => {
+            return Err(classified(
+                ErrorCode::UnknownRepository,
+                format!("unknown repository selector: {selector}"),
+            ));
+        }
+        _ => {
+            return Err(classified(
+                ErrorCode::AmbiguousRepository,
+                format!("ambiguous repository selector: {selector}"),
+            ));
+        }
     };
-    let path = root.join(&repository.directory);
+    let path = workspace::repository_path(&root, &repository.directory)?;
     let runtime = git::repository_runtime_info(&path);
     let remotes = repository
         .remotes

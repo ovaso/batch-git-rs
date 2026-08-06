@@ -5,6 +5,8 @@ use std::time::Duration;
 use anyhow::{Result, bail};
 use clap::ValueEnum;
 
+use crate::error::{ClassifyResult, ErrorCode};
+
 /// Output rendering selected by the global `--output` option.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, ValueEnum)]
 pub(crate) enum OutputFormat {
@@ -52,24 +54,31 @@ impl AutomationOptions {
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
-        if let Some(request_id) = &self.request_id {
-            validate_request_id(request_id)?;
-        }
-        if self.plan && self.apply {
-            bail!("--plan conflicts with --apply");
-        }
-        if self.apply && self.expected_workspace_revision.is_none() {
-            bail!("--apply requires --expect-workspace-revision");
-        }
-        if !self.apply && self.expected_workspace_revision.is_some() {
-            bail!("--expect-workspace-revision requires --apply");
-        }
-        Ok(())
+        (|| {
+            if let Some(request_id) = &self.request_id {
+                validate_request_id(request_id)?;
+            }
+            if self.plan && self.apply {
+                bail!("--plan conflicts with --apply");
+            }
+            if self.apply && self.expected_workspace_revision.is_none() {
+                bail!("--apply requires --expect-workspace-revision");
+            }
+            if !self.apply && self.expected_workspace_revision.is_some() {
+                bail!("--expect-workspace-revision requires --apply");
+            }
+            Ok(())
+        })()
+        .classify(ErrorCode::InvalidArguments)
     }
 }
 
 /// Parse the compact duration syntax accepted by `--timeout`.
 pub(crate) fn parse_timeout(raw: &str) -> Result<Duration> {
+    parse_timeout_inner(raw).classify(ErrorCode::InvalidArguments)
+}
+
+fn parse_timeout_inner(raw: &str) -> Result<Duration> {
     let raw = raw.trim();
     let Some((number, unit)) = raw
         .char_indices()
@@ -104,7 +113,10 @@ pub(super) fn validate_request_id(request_id: &str) -> Result<()> {
         || request_id.chars().count() > 128
         || request_id.chars().any(char::is_control)
     {
-        bail!("request id must contain 1 to 128 non-control characters");
+        return Err(crate::error::classified(
+            ErrorCode::InvalidArguments,
+            "request id must contain 1 to 128 non-control characters",
+        ));
     }
     Ok(())
 }

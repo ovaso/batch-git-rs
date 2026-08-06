@@ -2,12 +2,13 @@
 
 use std::collections::HashSet;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use serde_json::json;
 
 use super::super::verify_apply_revision;
 use crate::automation::{self, AutomationOptions};
 use crate::cli::ForgetArgs;
+use crate::error::{ErrorCode, classified};
 use crate::workspace::{self, WorkspaceLock};
 
 /// Remove declarations only; never remove repository directories or Git data.
@@ -33,8 +34,18 @@ pub(in crate::commands) fn forget(
             [index] => {
                 indexes.insert(*index);
             }
-            [] => bail!("unknown repository selector: {selector}"),
-            _ => bail!("ambiguous repository selector: {selector}"),
+            [] => {
+                return Err(classified(
+                    ErrorCode::UnknownRepository,
+                    format!("unknown repository selector: {selector}"),
+                ));
+            }
+            _ => {
+                return Err(classified(
+                    ErrorCode::AmbiguousRepository,
+                    format!("ambiguous repository selector: {selector}"),
+                ));
+            }
         }
     }
     let removed = manifest

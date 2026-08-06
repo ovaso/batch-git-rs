@@ -1,0 +1,54 @@
+#compdef batch-git
+
+local -a commands
+commands=(
+  'add:stage all changes in selected repositories'
+  'branch:show current branches'
+  'capabilities:show the automation surface'
+  'cd:checkout declared default branches'
+  'cf:checkout CURRENT_FEATURE_BRANCH'
+  'checkout:checkout a branch wherever it exists'
+  'clone:clone and register one repository'
+  'commit:commit already staged content'
+  'env:inspect supported environment variables'
+  'exec:run Git in selected repositories'
+  'fetch:fetch and prune all remotes'
+  'find:find local and remote-tracking branches'
+  'forget:remove repository registrations only'
+  'info:show workspace or repository metadata'
+  'list:list registered repositories'
+  'merge:merge a source branch safely'
+  'pull:fast-forward current tracking branches'
+  'push:push current tracking branches'
+  'restore:restore missing repositories'
+  'scan:discover and register repositories'
+  'schedule:manage scheduled synchronization'
+  'schema:print automation JSON Schema'
+  'status:show workspace status'
+  'sync:restore and fetch repositories'
+  'unstage:clear selected indexes without changing worktrees'
+)
+
+_arguments -C \
+  '--jobs[maximum parallel repositories]:jobs:' \
+  '--verbose[show successful child output]' \
+  '--output[machine output format]:format:(text json jsonl)' \
+  '--request-id[request identifier]:request id:' \
+  '--non-interactive[disable child prompts]' \
+  '--timeout[child process timeout]:duration:' \
+  '--plan[render a no-side-effect plan]' \
+  '--apply[apply against an expected workspace revision]' \
+  '--expect-workspace-revision[expected workspace revision]:revision:' \
+  '1:command:->command' \
+  '*::arguments:->arguments'
+
+case $state in
+  command) _describe 'command' commands ;;
+  arguments)
+    case $words[2] in
+      env) _values 'action' list ;;
+      schedule) _values 'action' add doctor generate list plan register remove run status unregister update ;;
+      schema) _values 'document' operation-result workspace ;;
+    esac
+    ;;
+esac

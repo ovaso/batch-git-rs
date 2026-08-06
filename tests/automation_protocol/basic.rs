@@ -372,3 +372,25 @@ fn empty_workspace_environment_is_reported_as_workspace_not_found() {
     assert_eq!(receipt["command"], "list");
     assert_eq!(receipt["error"]["code"], "workspace_not_found");
 }
+
+#[test]
+fn selector_failures_keep_typed_machine_error_codes() {
+    let fixture = WorkspaceFixture::new();
+    let cases: &[(&[&str], &str)] = &[
+        (
+            &["--output", "json", "sync", "missing-repository"],
+            "unknown_repository",
+        ),
+        (
+            &["--output", "json", "sync", "--match", "missing-*"],
+            "selector_no_match",
+        ),
+    ];
+
+    for (arguments, expected_code) in cases {
+        let output = run(&fixture.workspace, arguments);
+        assert_eq!(output.status.code(), Some(2));
+        let receipt = json_output(output);
+        assert_eq!(receipt["error"]["code"], *expected_code);
+    }
+}

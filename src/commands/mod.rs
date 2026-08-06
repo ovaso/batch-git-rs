@@ -20,11 +20,12 @@ use workspace_commands::{default_clone_directory, relative_string, restore_one};
 use std::io::{self, IsTerminal};
 use std::path::Path;
 
-use anyhow::{Result, bail};
+use anyhow::Result;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
 use crate::automation::AutomationOptions;
 use crate::cli::{CheckoutArgs, Cli, Command, ExecArgs, MergeArgs};
+use crate::error::{ErrorCode, classified};
 use crate::git::GitExecutionOptions;
 use crate::model::{RepositoryRecord, Workspace};
 use crate::parallel::map_ordered_with_completion;
@@ -44,7 +45,10 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
         return plan::plan_command(&cli.command, jobs, &automation);
     }
     if automation.apply && !cli.command.is_mutating() {
-        bail!("--apply is only valid for an operation with side effects");
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "--apply is only valid for an operation with side effects",
+        ));
     }
     match cli.command {
         Command::Add(arguments) => changes::add(arguments, jobs, runtime.verbose, &automation),
@@ -168,8 +172,8 @@ fn git_execution_options(automation: &AutomationOptions, allow_stdin: bool) -> G
 ///
 /// `JsonlProgress` emits `started` before workers begin, then preserves the protocol's manifest
 /// ordering by buffering out-of-order worker completions until their predecessors are available.
-fn map_repository_results<T, F>(
-    items: &[T],
+fn map_repository_results<F>(
+    items: &[RepositoryRecord],
     jobs: usize,
     automation: &AutomationOptions,
     command: &str,
@@ -177,15 +181,22 @@ fn map_repository_results<T, F>(
     operation: F,
 ) -> Result<Vec<RepositoryResult>>
 where
-    T: Sync,
-    F: Fn(&T) -> RepositoryResult + Sync + Send,
+    F: Fn(&RepositoryRecord, &Path) -> RepositoryResult + Sync + Send,
 {
     let progress = JsonlProgress::new(automation, command, root, items.len())?;
-    map_ordered_with_completion(items, jobs, operation, |index, result| {
-        if let Some(progress) = &progress {
-            progress.repository_finished(index, result);
-        }
-    })
+    map_ordered_with_completion(
+        items,
+        jobs,
+        |repository| match workspace::repository_path(root, &repository.directory) {
+            Ok(path) => operation(repository, &path),
+            Err(error) => RepositoryResult::failed(repository, error.to_string()),
+        },
+        |index, result| {
+            if let Some(progress) = &progress {
+                progress.repository_finished(index, result);
+            }
+        },
+    )
 }
 
 /// 将 `cd`、`cf` 两个便捷别名转换为标准 checkout 参数。

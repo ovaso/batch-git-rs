@@ -1,4 +1,4 @@
-use std::io::{BufRead, BufReader, Read};
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
@@ -6,10 +6,12 @@ use std::thread;
 use anyhow::{Context, Result, bail};
 
 use super::execution::{
-    configure_execution_options, isolate_repository_environment, join_reader, output_with_timeout,
+    BoundedOutput, MAX_CAPTURED_OUTPUT_BYTES, configure_execution_options,
+    isolate_repository_environment, join_reader, output_with_timeout, output_without_timeout,
     status_with_timeout, terminal_is_interactive, timeout_message, wait_for_child_with_timeout,
 };
 use super::types::{CloneOptions, CloneProgress, GitExecutionOptions};
+use crate::error::{ErrorCode, classified};
 
 /// 使用系统 Git 克隆仓库，以继承用户的认证、代理和 credential helper 配置。
 #[allow(dead_code)] // Retained as an internal compatibility wrapper for the previous call shape.
@@ -71,8 +73,7 @@ fn execute_clone_command(
 
     let output = match execution.timeout {
         Some(timeout) => output_with_timeout(command, timeout, true, "Git clone")?,
-        None => command
-            .output()
+        None => output_without_timeout(command, true, "Git clone")
             .with_context(|| format!("failed to execute Git clone for {url}"))?,
     };
     ensure_clone_succeeded(output.status, &output.stderr, execution.non_interactive)
@@ -108,7 +109,10 @@ fn run_clone_with_progress(
                 // timeout must bound this invocation even though it cannot kill descendants on
                 // every platform.
                 drop(reader);
-                bail!("{}", timeout_message("Git clone", timeout));
+                return Err(classified(
+                    ErrorCode::Timeout,
+                    timeout_message("Git clone", timeout),
+                ));
             }
             let message = join_reader(reader, "failed to read Git clone progress");
             ensure_clone_succeeded(status, &message?, execution.non_interactive)
@@ -118,16 +122,49 @@ fn run_clone_with_progress(
 
 /// 收集 clone stderr 的进度行，并保留失败时可供人类诊断的文本。
 fn read_clone_progress<R: Read>(reader: R, progress: &CloneProgress) -> Result<Vec<u8>> {
-    let mut message = Vec::new();
-    for chunk in BufReader::new(reader).split(b'\r') {
-        let chunk = chunk.context("failed to read Git clone progress")?;
-        message.extend_from_slice(&chunk);
-        message.push(b'\n');
-        if let Some((received, total)) = clone_progress_counts(&chunk) {
-            progress(received, total);
+    const MAX_PROGRESS_LINE_BYTES: usize = 8192;
+
+    let mut reader = reader;
+    let mut message = BoundedOutput::new(MAX_CAPTURED_OUTPUT_BYTES);
+    let mut progress_line = Vec::with_capacity(256);
+    let mut progress_line_overflowed = false;
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .context("failed to read Git clone progress")?;
+        if read == 0 {
+            break;
         }
+        let mut diagnostic = Vec::with_capacity(read);
+        for &byte in &buffer[..read] {
+            if byte == b'\r' {
+                diagnostic.push(b'\n');
+                if !progress_line_overflowed
+                    && let Some((received, total)) = clone_progress_counts(&progress_line)
+                {
+                    progress(received, total);
+                }
+                progress_line.clear();
+                progress_line_overflowed = false;
+            } else {
+                diagnostic.push(byte);
+                if progress_line.len() < MAX_PROGRESS_LINE_BYTES {
+                    progress_line.push(byte);
+                } else {
+                    progress_line_overflowed = true;
+                }
+            }
+        }
+        message.push(&diagnostic);
     }
-    Ok(message)
+    if !progress_line.is_empty()
+        && !progress_line_overflowed
+        && let Some((received, total)) = clone_progress_counts(&progress_line)
+    {
+        progress(received, total);
+    }
+    Ok(message.finish())
 }
 
 /// 将 clone 的失败文本限制在人类交互模式，避免机器模式转发子进程输出。
@@ -154,10 +191,13 @@ fn clone_progress_counts(message: &[u8]) -> Option<(usize, usize)> {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use std::process::Command;
+    use std::sync::Arc;
     use std::time::Duration;
 
-    use super::{GitExecutionOptions, execute_clone_command};
+    use super::{GitExecutionOptions, execute_clone_command, read_clone_progress};
+    use crate::git::execution::{MAX_CAPTURED_OUTPUT_BYTES, OUTPUT_TRUNCATION_MARKER};
 
     #[cfg(unix)]
     #[test]
@@ -178,5 +218,19 @@ mod tests {
         let rendered = format!("{error:#}");
         assert!(rendered.contains("timed out"));
         assert!(!rendered.contains("machine-secret"));
+    }
+
+    #[test]
+    fn clone_progress_diagnostics_are_bounded() {
+        let input = vec![b'x'; MAX_CAPTURED_OUTPUT_BYTES * 2];
+        let progress: super::CloneProgress = Arc::new(|_, _| {});
+        let output = read_clone_progress(Cursor::new(input), &progress).unwrap();
+
+        assert!(output.len() <= MAX_CAPTURED_OUTPUT_BYTES);
+        assert!(
+            output
+                .windows(OUTPUT_TRUNCATION_MARKER.len())
+                .any(|window| window == OUTPUT_TRUNCATION_MARKER)
+        );
     }
 }

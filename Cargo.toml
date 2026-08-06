@@ -22,6 +22,9 @@ include = [
     "CHANGELOG.md",
     "LICENSE",
     "build.sh",
+    "install.sh",
+    "install.ps1",
+    "completions/**",
 ]
 
 [features]
@@ -55,3 +58,8 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = "symbols"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.tar.gz"
+pkg-fmt = "tgz"
+bin-dir = "batch-git-{ target }/{ bin }{ binary-ext }"

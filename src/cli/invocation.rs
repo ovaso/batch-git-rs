@@ -204,7 +204,7 @@ pub fn preflight_command(args: &[OsString]) -> Option<String> {
             };
             return Some(format!("{parent} {action}"));
         }
-        let command = canonical_command(&value);
+        let command = super::canonical_command_name(&value);
         if matches!(command, "schedule" | "env") {
             parent_command = Some(command.to_owned());
             continue;
@@ -212,19 +212,6 @@ pub fn preflight_command(args: &[OsString]) -> Option<String> {
         return Some(command.to_owned());
     }
     parent_command
-}
-
-fn canonical_command(command: &str) -> &str {
-    match command {
-        "b" => "branch",
-        "cc" | "cd" | "cf" => "checkout",
-        "fd" | "f" => "find",
-        "i" => "info",
-        "ls" | "l" => "list",
-        "m" => "merge",
-        "s" => "status",
-        other => other,
-    }
 }
 
 fn canonical_schedule_action(action: &str) -> &str {

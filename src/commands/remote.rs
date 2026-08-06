@@ -23,12 +23,16 @@ pub(super) fn fetch(jobs: usize, verbose: bool, automation: &AutomationOptions) 
     let mut manifest = workspace::read(&root)?;
     let records = manifest.repositories.clone();
     let progress = OperationProgress::new(&records, automation.is_machine());
-    let results =
-        map_repository_results(&records, jobs, automation, "fetch", &root, |repository| {
+    let results = map_repository_results(
+        &records,
+        jobs,
+        automation,
+        "fetch",
+        &root,
+        |repository, path| {
             let bar = progress.bar(repository);
             set_operation_status(bar.as_ref(), "checking", 0);
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+            if !git::is_repository(path) {
                 let result = RepositoryResult::failed(
                     repository,
                     "repository is not materialized; run restore",
@@ -38,7 +42,7 @@ pub(super) fn fetch(jobs: usize, verbose: bool, automation: &AutomationOptions) 
             }
             set_operation_status(bar.as_ref(), "configuring", 0);
             if let Err(error) = git::configure_declared_remotes(
-                &path,
+                path,
                 repository,
                 git_execution_options(automation, jobs == 1).allow_stdin,
             ) {
@@ -48,7 +52,7 @@ pub(super) fn fetch(jobs: usize, verbose: bool, automation: &AutomationOptions) 
             }
             set_operation_status(bar.as_ref(), "fetching", 0);
             let result = match git::fetch_all_with_options(
-                &path,
+                path,
                 git_execution_options(automation, jobs == 1),
             ) {
                 Ok(output) => {
@@ -58,7 +62,8 @@ pub(super) fn fetch(jobs: usize, verbose: bool, automation: &AutomationOptions) 
             };
             finish_operation(bar.as_ref(), &result);
             result
-        })?;
+        },
+    )?;
     progress.finish();
     for (record, outcome) in manifest.repositories.iter_mut().zip(&results) {
         if outcome.was_synced() {
@@ -114,41 +119,47 @@ pub(crate) fn run_sync_named(
     command: &str,
 ) -> Result<i32> {
     let progress = OperationProgress::new(records, automation.is_machine());
-    let results = map_repository_results(records, jobs, automation, command, root, |repository| {
-        let bar = progress.bar(repository);
-        set_operation_status(bar.as_ref(), "checking", 0);
-        let restore_result = restore_one(
-            root,
-            repository,
-            git_execution_options(automation, jobs == 1),
-            None,
-        );
-        if restore_result.is_failed() {
-            finish_operation(bar.as_ref(), &restore_result);
-            return restore_result;
-        }
-        let restored = restore_result.was_synced();
-        set_operation_status(bar.as_ref(), "fetching", 0);
-        let path = root.join(&repository.directory);
-        let result = match git::fetch_all_with_options(
-            &path,
-            git_execution_options(automation, jobs == 1),
-        ) {
-            Ok(output) => RepositoryResult::from_git(
+    let results = map_repository_results(
+        records,
+        jobs,
+        automation,
+        command,
+        root,
+        |repository, path| {
+            let bar = progress.bar(repository);
+            set_operation_status(bar.as_ref(), "checking", 0);
+            let restore_result = restore_one(
+                root,
                 repository,
-                output,
-                if restored {
-                    "restored and remote refs updated"
-                } else {
-                    "remote refs updated"
-                },
-                true,
-            ),
-            Err(error) => RepositoryResult::failed(repository, error.to_string()),
-        };
-        finish_operation(bar.as_ref(), &result);
-        result
-    })?;
+                git_execution_options(automation, jobs == 1),
+                None,
+            );
+            if restore_result.is_failed() {
+                finish_operation(bar.as_ref(), &restore_result);
+                return restore_result;
+            }
+            let restored = restore_result.was_synced();
+            set_operation_status(bar.as_ref(), "fetching", 0);
+            let result = match git::fetch_all_with_options(
+                path,
+                git_execution_options(automation, jobs == 1),
+            ) {
+                Ok(output) => RepositoryResult::from_git(
+                    repository,
+                    output,
+                    if restored {
+                        "restored and remote refs updated"
+                    } else {
+                        "remote refs updated"
+                    },
+                    true,
+                ),
+                Err(error) => RepositoryResult::failed(repository, error.to_string()),
+            };
+            finish_operation(bar.as_ref(), &result);
+            result
+        },
+    )?;
     progress.finish();
 
     let timestamp = now();
@@ -214,42 +225,48 @@ pub(crate) fn run_pull_named(
     automation: &AutomationOptions,
     command: &str,
 ) -> Result<i32> {
-    let results = map_repository_results(records, jobs, automation, command, root, |repository| {
-        let path = root.join(&repository.directory);
-        if !git::is_repository(&path) {
-            return RepositoryResult::failed(
-                repository,
-                "repository is not materialized; run sync or restore",
-            );
-        }
-        let status = match git::status_summary(&path) {
-            Ok(status) => status,
-            Err(error) => return RepositoryResult::failed(repository, error.to_string()),
-        };
-        if status.branch.starts_with("(detached:") || status.branch == "(unborn)" {
-            return RepositoryResult::failed(repository, "current HEAD is not a local branch");
-        }
-        if status.changes.total() != 0 {
-            return RepositoryResult::failed(repository, "working tree is not clean");
-        }
-        if matches!(status.upstream, UpstreamSummary::None) {
-            return RepositoryResult::failed(repository, "current branch has no upstream");
-        }
-        match git::run_with_options(
-            &path,
-            ["pull", "--ff-only"],
-            true,
-            git_execution_options(automation, false),
-        ) {
-            Ok(output) => RepositoryResult::from_git(
-                repository,
-                output,
-                format!("branch {} updated with fast-forward only", status.branch),
+    let results = map_repository_results(
+        records,
+        jobs,
+        automation,
+        command,
+        root,
+        |repository, path| {
+            if !git::is_repository(path) {
+                return RepositoryResult::failed(
+                    repository,
+                    "repository is not materialized; run sync or restore",
+                );
+            }
+            let status = match git::status_summary(path) {
+                Ok(status) => status,
+                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            };
+            if status.branch.starts_with("(detached:") || status.branch == "(unborn)" {
+                return RepositoryResult::failed(repository, "current HEAD is not a local branch");
+            }
+            if status.changes.total() != 0 {
+                return RepositoryResult::failed(repository, "working tree is not clean");
+            }
+            if matches!(status.upstream, UpstreamSummary::None) {
+                return RepositoryResult::failed(repository, "current branch has no upstream");
+            }
+            match git::run_with_options(
+                path,
+                ["pull", "--ff-only"],
                 true,
-            ),
-            Err(error) => RepositoryResult::failed(repository, error.to_string()),
-        }
-    })?;
+                git_execution_options(automation, false),
+            ) {
+                Ok(output) => RepositoryResult::from_git(
+                    repository,
+                    output,
+                    format!("branch {} updated with fast-forward only", status.branch),
+                    true,
+                ),
+                Err(error) => RepositoryResult::failed(repository, error.to_string()),
+            }
+        },
+    )?;
 
     let timestamp = now();
     let mut changed = false;
@@ -289,23 +306,27 @@ pub(super) fn push(
         &arguments.selection.matches,
         arguments.selection.all,
     )?;
-    let results =
-        map_repository_results(&records, jobs, automation, "push", &root, |repository| {
-            let path = root.join(&repository.directory);
-            if !git::is_repository(&path) {
+    let results = map_repository_results(
+        &records,
+        jobs,
+        automation,
+        "push",
+        &root,
+        |repository, path| {
+            if !git::is_repository(path) {
                 return RepositoryResult::failed(
                     repository,
                     "repository is not materialized; run sync or restore",
                 );
             }
-            let status = match git::status_summary(&path) {
+            let status = match git::status_summary(path) {
                 Ok(status) => status,
                 Err(error) => return RepositoryResult::failed(repository, error.to_string()),
             };
             if status.branch.starts_with("(detached:") || status.branch == "(unborn)" {
                 return RepositoryResult::failed(repository, "current HEAD is not a local branch");
             }
-            let upstream_target = match git::upstream_push_target(&path, &status.branch) {
+            let upstream_target = match git::upstream_push_target(path, &status.branch) {
                 Ok(target) => target,
                 Err(error) => return RepositoryResult::failed(repository, error.to_string()),
             };
@@ -316,7 +337,7 @@ pub(super) fn push(
                         upstream_target.as_ref().expect("target checked above");
                     push_existing_upstream(
                         repository,
-                        &path,
+                        path,
                         &status.branch,
                         remote,
                         merge_ref,
@@ -338,7 +359,7 @@ pub(super) fn push(
                     }
                     git_arguments.extend(["--set-upstream", remote, "HEAD"]);
                     match git::run_with_options(
-                        &path,
+                        path,
                         git_arguments,
                         true,
                         git_execution_options(automation, jobs == 1),
@@ -382,7 +403,7 @@ pub(super) fn push(
                     };
                     push_existing_upstream(
                         repository,
-                        &path,
+                        path,
                         &status.branch,
                         remote,
                         merge_ref,
@@ -391,7 +412,8 @@ pub(super) fn push(
                     )
                 }
             }
-        })?;
+        },
+    )?;
     print_push_summary(&results, verbose, automation, "push", &root)
 }
 

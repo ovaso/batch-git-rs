@@ -9,6 +9,7 @@ use super::super::{git_execution_options, verify_apply_revision};
 use super::support::{relative_string, reserve_clone_destination, unique_name};
 use crate::automation::{self, AutomationOptions};
 use crate::cli::CloneArgs;
+use crate::error::{ErrorCode, classified, error_code};
 use crate::git::{self, CloneOptions};
 use crate::model::{RepositoryRecord, WORKSPACE_FILE, now, validate_directory};
 use crate::report::JsonlProgress;
@@ -36,13 +37,17 @@ pub(in crate::commands) fn clone_repository(
         bail!("repository directory is already registered: {directory_string}");
     }
 
-    let target = root.join(&directory);
+    let target = workspace::repository_path(&root, &directory_string)?;
     if let Some(depth) = arguments.depth
         && depth == 0
     {
-        bail!("--depth must be at least 1");
+        return Err(classified(
+            ErrorCode::InvalidArguments,
+            "--depth must be at least 1",
+        ));
     }
     reserve_clone_destination(&target)?;
+    let target = workspace::repository_path(&root, &directory_string)?;
     let jsonl_progress = JsonlProgress::new(automation, "clone", &root, 1)?;
     if let Err(error) = git::clone_repository_with_options(
         &arguments.repository,
@@ -59,7 +64,7 @@ pub(in crate::commands) fn clone_repository(
     ) {
         if automation.is_machine() {
             let detail = automation::sanitize_message(&error.to_string());
-            let reason_code = if detail.to_ascii_lowercase().contains("timed out") {
+            let reason_code = if error_code(&error) == Some(ErrorCode::Timeout) {
                 "timeout"
             } else {
                 "git_failed"

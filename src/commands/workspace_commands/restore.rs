@@ -32,8 +32,13 @@ pub(in crate::commands) fn restore(
     let mut manifest = workspace::read(&root)?;
     let records = manifest.repositories.clone();
     let progress = OperationProgress::new(&records, automation.is_machine());
-    let results =
-        map_repository_results(&records, jobs, automation, "restore", &root, |repository| {
+    let results = map_repository_results(
+        &records,
+        jobs,
+        automation,
+        "restore",
+        &root,
+        |repository, _path| {
             let bar = progress.bar(repository);
             restore_one(
                 &root,
@@ -41,7 +46,8 @@ pub(in crate::commands) fn restore(
                 git_execution_options(automation, jobs == 1),
                 bar.as_ref(),
             )
-        })?;
+        },
+    )?;
     progress.finish();
     for (record, outcome) in manifest.repositories.iter_mut().zip(&results) {
         if outcome.was_synced() {
@@ -62,7 +68,14 @@ pub(in crate::commands) fn restore_one(
     progress: Option<&ProgressBar>,
 ) -> RepositoryResult {
     set_operation_status(progress, "checking", 0);
-    let target = root.join(&repository.directory);
+    let target = match workspace::repository_path(root, &repository.directory) {
+        Ok(path) => path,
+        Err(error) => {
+            let result = RepositoryResult::failed(repository, error.to_string());
+            finish_operation(progress, &result);
+            return result;
+        }
+    };
     if target.exists() {
         if !git::is_repository(&target) {
             let result =
@@ -94,6 +107,14 @@ pub(in crate::commands) fn restore_one(
         finish_operation(progress, &result);
         return result;
     }
+    let target = match workspace::repository_path(root, &repository.directory) {
+        Ok(path) => path,
+        Err(error) => {
+            let result = RepositoryResult::failed(repository, error.to_string());
+            finish_operation(progress, &result);
+            return result;
+        }
+    };
     set_operation_status(progress, "cloning", 0);
     let clone_progress = progress.cloned().map(|bar| {
         Arc::new(move |received: usize, total: usize| {

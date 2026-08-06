@@ -27,6 +27,9 @@ helper 进程；收到 timeout 结果后，这些后代进程仍可能存活。
 `add` 的 filter 以及 `commit` 的 hook、签名程序也属于可能继续存活的后代；commit 可能已经
 更新本地 ref 后才在后续步骤中超时，因此自动化收到 `timeout` 后必须重新检查 HEAD 和 index，
 不能假定该仓库未产生提交或直接重试。
+被捕获的 Git stdout 和 stderr 各自最多保留 1 MiB。超过上限时 batch-git 仍会持续排空 pipe，
+但只保留输出开头和结尾，并在中间插入 `[batch-git: output truncated]`。机器 receipt 不包含原始
+Git 输出；文本详细模式或调试 per-repository 结果的消费者不得假定输出完整。
 已注册的原生 schedule 通过隐藏的 `schedule native-run` 入口启动时，也会无条件向其实际
 `schedule run` child 传递 `--non-interactive`，不支持依赖终端提示的认证流程。
 
@@ -113,7 +116,8 @@ helper 进程；收到 timeout 结果后，这些后代进程仍可能存活。
 | `schedule_invalid` | 检查 schedule 声明和平台限制。 |
 | `operation_failed` | 未能进一步稳定分类的顶层失败。 |
 
-错误还包含可演进的 `message`、`retryable` 和可选 `hint`。不要通过匹配 `message` 文字
+这些 code 由类型化错误来源决定，不从 `message` 中搜索英文关键词。错误还包含可演进的
+`message`、`retryable` 和可选 `hint`。不要通过匹配 `message` 文字
 做自动决策。机器协议不会默认包含 Git 的原始 stdout/stderr；HTTP(S) URL 的 user-info
 也会在机器诊断中清理。
 
