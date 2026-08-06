@@ -1,7 +1,7 @@
 # batch-git
 
-[![CI](https://github.com/livenv/batch-git/actions/workflows/ci.yml/badge.svg)](https://github.com/livenv/batch-git/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/livenv/batch-git)](https://github.com/livenv/batch-git/releases)
+[![CI](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ovaso/batch-git-rs)](https://github.com/ovaso/batch-git-rs/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
