@@ -1,29 +1,29 @@
-name: Bug report
-description: Report a reproducible batch-git defect
+name: Bug report / 缺陷报告
+description: Report a reproducible batch-git defect / 报告可复现的 batch-git 缺陷
 title: "bug: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: Do not include credentials, private repository URLs, tokens, or security vulnerabilities.
+      value: Do not include credentials, private repository URLs, tokens, or security vulnerabilities. / 请勿包含凭据、私有仓库 URL、token 或安全漏洞细节。
   - type: input
     id: version
     attributes:
-      label: batch-git version
+      label: batch-git version / batch-git 版本
       placeholder: batch-git 0.4.0
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: OS and Git version
+      label: OS and Git version / 操作系统与 Git 版本
       placeholder: macOS 15; git 2.50.1
     validations:
       required: true
   - type: textarea
     id: reproduce
     attributes:
-      label: Minimal reproduction
-      description: Include sanitized commands, expected behavior, actual behavior, and exit code.
+      label: Minimal reproduction / 最小复现
+      description: Include sanitized commands, expected behavior, actual behavior, and exit code. / 请提供已脱敏命令、预期行为、实际行为和退出码。
     validations:
       required: true

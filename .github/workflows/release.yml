@@ -51,7 +51,7 @@ jobs:
           package="batch-git-${{ matrix.target }}"
           mv dist/package "dist/${package}"
           cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "dist/${package}/"
-          cp LICENSE README.md "dist/${package}/"
+          cp LICENSE README.md README.zh-CN.md "dist/${package}/"
           cp completions/* "dist/${package}/completions/"
           tar -C dist -czf "dist/${archive}" "${package}"
           if command -v sha256sum >/dev/null; then

@@ -1,72 +1,77 @@
-# 命令组织计划
+# Command Organization Plan
 
-本计划只讨论后续的命令元数据与帮助呈现整理。当前重构不改变 CLI 路径、参数、退出码、机器输出、
-capabilities command 字符串或 schedule 行为，也不把现有命令改成 `workspace scan`、`repo pull`
-等嵌套形式。
+[简体中文](zh-CN/COMMAND_ORGANIZATION_PLAN.md)
 
-## 目标
+This plan covers future command-metadata and help-presentation work only. The current refactor does
+not change CLI paths, arguments, exit codes, machine output, capability command strings, or schedule
+behavior, and does not replace flat commands with nested forms such as `workspace scan` or
+`repo pull`.
 
-- 让新增命令时需要维护的事实集中，减少在 `Command`、可写性判断、dispatch、plan 和
-  capabilities 之间遗漏同步的风险；
-- 改善顶层帮助的浏览效率，同时保留脚本、automation contract 和 skill 已使用的扁平命令路径；
-- 继续明确 `fetch` / `sync` / `pull`、`list` / `status` / `info` 的安全语义差异，不通过合并命令
-  模糊副作用边界。
+## Goals
 
-## 非目标
+- Centralize the facts that must be maintained when adding a command, reducing omissions across `Command`, mutability checks, dispatch, plan, and capabilities.
+- Make top-level help easier to scan while preserving the flat command paths used by scripts, the automation contract, and the skill.
+- Keep the safety distinctions between `fetch` / `sync` / `pull` and `list` / `status` / `info` explicit instead of obscuring side-effect boundaries by merging commands.
 
-- 不重命名、删除或合并现有命令；
-- 不改变 `cd`、`cf`、`cc` 等兼容入口的解析结果；
-- 不改变 plan/apply、选择器、并发、退出码、JSON/JSONL、reason code、capabilities 或 schema；
-- 不为命令分类引入第二份持久化状态，`workspace.toml` 仍是唯一工作区事实来源。
+## Non-goals
 
-## 实施状态与后续阶段
+- Do not rename, remove, or merge existing commands.
+- Do not change how compatibility entry points such as `cd`, `cf`, and `cc` resolve.
+- Do not change plan/apply, selectors, concurrency, exit codes, JSON/JSONL, reason codes, capabilities, or schemas.
+- Do not introduce a second persistent state source for command classification; `workspace.toml` remains the only workspace source of truth.
 
-### 1. 冻结公开命令面
+## Implementation status and later phases
 
-以黑盒测试锁定顶层命令路径和 capabilities 中的稳定 command 字符串。任何后续实现都必须先证明
-现有调用仍可解析，并运行 `tests/automation_protocol.rs` 与主要端到端工作流。
+### 1. Freeze the public command surface
 
-### 2. 单一命令元数据来源（已实施内部边界）
+Use black-box tests to lock the top-level command paths and stable command strings in capabilities.
+Every later implementation must first prove that existing invocations still parse and must run
+`tests/automation_protocol.rs` plus the primary end-to-end workflows.
 
-`cli::metadata` 已以编译期表集中并派生或校验：
+### 2. Single command metadata source (internal boundary implemented)
 
-- 规范 command 字符串和兼容别名；
-- 是否可能产生副作用，以及全局 `--plan` / `--apply` 是否适用；
-- 顶层帮助分类；
-- capabilities 是否公开；
-- dispatch 与 plan 是否已有处理分支。
+`cli::metadata` now centralizes, derives, or validates at compile time:
 
-该模型只保存编译期元数据，不保存运行状态。clap 参数类型、dispatch 和 plan 仍使用穷尽 match，
-由编译器保证新增枚举变体必须补齐；测试校验 clap 顶层名册与元数据完全一致。没有引入动态注册表。
+- canonical command strings and compatibility aliases;
+- whether a command may have side effects and whether global `--plan` / `--apply` applies;
+- top-level help categories;
+- capabilities exposure;
+- whether dispatch and plan have handling branches.
 
-### 3. 增加非破坏性帮助索引
+The model stores compile-time metadata only, never runtime state. clap argument types, dispatch, and
+plan remain exhaustive matches so the compiler forces every new enum variant to be handled. Tests
+verify that the clap top-level roster and metadata are identical. No dynamic registry was added.
 
-在不移动命令路径的前提下，为顶层帮助增加快速索引：
+### 3. Add a non-breaking help index
 
-- 建立工作区：`scan`、`clone`、`restore`、`forget`；
-- 查看：`list`、`status`、`info`、`branch`、`find`、`env`；
-- 同步与远端：`fetch`、`sync`、`pull`、`push`；
-- 分支：`checkout`、`merge`；
-- 暂存与提交：`add`、`unstage`、`commit`；
-- 自动化：`capabilities`、`schema`、`schedule`；
-- 逃生舱：`exec` 与显式 `-- <git-args...>`。
+Add a top-level quick index without moving command paths:
 
-帮助索引只是导航，不改变各命令的 clap 定义、参数或排序。实施时需要同步帮助快照、用户手册和
-CHANGELOG，但不修改 automation command 字符串。
+- Workspace setup: `scan`, `clone`, `restore`, `forget`.
+- Inspection: `list`, `status`, `info`, `branch`, `find`, `env`.
+- Synchronization and remotes: `fetch`, `sync`, `pull`, `push`.
+- Branches: `checkout`, `merge`.
+- Staging and commits: `add`, `unstage`, `commit`.
+- Automation: `capabilities`, `schema`, `schedule`.
+- Escape hatches: `exec` and explicit `-- <git-args...>`.
 
-### 4. 降低快捷入口噪音
+The help index is navigation only; it does not change clap definitions, arguments, or ordering.
+Implementation must update help snapshots, both language versions of the user guide, and both
+changelogs without changing automation command strings.
 
-单独评估将 `cd`、`cf` 从默认命令列表隐藏但继续支持直接调用。它们仍分别等价于
-`checkout --default` 与 `checkout --feature`，不移除、不改名，也不改变 preflight command
-归一化。该阶段必须增加 `cd`、`cf` 可调用的黑盒回归，并确认 shell completion 与错误文案影响。
+### 4. Reduce shortcut noise
 
-## 实施门禁
+Evaluate hiding `cd` and `cf` from the default command list while continuing to accept direct
+invocation. They remain equivalent to `checkout --default` and `checkout --feature`; they are not
+removed or renamed, and preflight command normalization does not change. This phase requires
+black-box coverage proving `cd` and `cf` remain callable and must evaluate shell-completion and error
+message impact.
 
-任何命令呈现变更都应同时检查：
+## Implementation gates
 
-1. 顶层和子命令 `--help`；
-2. `Command::is_mutating`、dispatch、plan 和 capabilities 覆盖；
-3. `docs/USER_GUIDE.md`、`docs/AUTOMATION_CONTRACTS.md`、`CHANGELOG.md` 与仓库内 automation
-   skill 是否需要同步；
-4. CLI 单元测试、`tests/automation_protocol.rs` 和 `tests/mvp.rs`；
-5. Linux、macOS、Windows 构建，以及 schedule 平台差异是否仍明确。
+Every command-presentation change must check:
+
+1. Top-level and subcommand `--help`.
+2. `Command::is_mutating`, dispatch, plan, and capabilities coverage.
+3. Whether both language versions of the user guide, automation contracts, changelog, and repository-local automation skill need updates.
+4. CLI unit tests, `tests/automation_protocol.rs`, and `tests/mvp.rs`.
+5. Linux, macOS, and Windows builds, including explicit scheduler differences.

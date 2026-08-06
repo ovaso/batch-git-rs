@@ -1,45 +1,54 @@
-# 自动化契约
+# Automation Contracts
 
-本文件定义 `batch-git` 面向 CI、脚本和 agent 的稳定接口。人类表格、颜色和说明文字可
-改进；自动化必须使用版本化输出并根据退出码和稳定字段判断结果。除非在新的主版本中声明，
-同一主版本只会新增字段，不会删除字段或改变既有字段类型。
+[简体中文](zh-CN/AUTOMATION_CONTRACTS.md)
 
-## 选择输出协议
+This document defines the stable interface that `batch-git` exposes to CI, scripts, and agents.
+Human-facing tables, colors, and explanations may evolve. Automation must use versioned output and
+decide from exit codes and stable fields. Unless a new major version says otherwise, releases within
+the same major version may add fields but do not remove fields or change existing field types.
 
-新集成一律使用全局输出参数：
+## Selecting an output protocol
+
+New integrations must use the global output option:
 
 ```sh
 batch-git --output json --request-id task-42 status
 batch-git --output jsonl sync --match 'service-*'
 ```
 
-| 格式 | 适用场景 | stdout 保证 |
+| Format | Intended use | stdout guarantee |
 |---|---|---|
-| `text`（默认） | 人类终端 | 表格、提示和必要的子进程诊断。 |
-| `json` | 一次请求/响应式的 agent、CI、脚本 | 恰好一个紧凑 JSON 文档；成功时 stderr 为空。 |
-| `jsonl` | 长批量任务和进度消费 | 每行一个独立 JSON 事件；没有表格、进度条或 Git 原始输出。 |
+| `text` (default) | Human terminal | Tables, prompts, and required child-process diagnostics. |
+| `json` | Request/response agents, CI, and scripts | Exactly one compact JSON document; stderr is empty on success. |
+| `jsonl` | Long batch jobs and progress consumers | One independent JSON event per line; no tables, progress bars, or raw Git output. |
 
-`--output json` / `jsonl` 隐式以非交互方式启动 Git 子进程，避免 TTY 提示污染协议。
-需要在文本模式下显式禁止交互时使用 `--non-interactive`。`--timeout 30s`、`5m` 或 `1h`
-限制每个由 batch-git 启动的系统 Git 子进程；它不限制工作区锁等待、git2 本地操作或原生
-调度器命令。timeout 只终止直接启动的 Git 子进程，不能保证终止它再派生的认证、传输或
-helper 进程；收到 timeout 结果后，这些后代进程仍可能存活。
-`add` 的 filter 以及 `commit` 的 hook、签名程序也属于可能继续存活的后代；commit 可能已经
-更新本地 ref 后才在后续步骤中超时，因此自动化收到 `timeout` 后必须重新检查 HEAD 和 index，
-不能假定该仓库未产生提交或直接重试。
-被捕获的 Git stdout 和 stderr 各自最多保留 1 MiB。超过上限时 batch-git 仍会持续排空 pipe，
-但只保留输出开头和结尾，并在中间插入 `[batch-git: output truncated]`。机器 receipt 不包含原始
-Git 输出；文本详细模式或调试 per-repository 结果的消费者不得假定输出完整。
-已注册的原生 schedule 通过隐藏的 `schedule native-run` 入口启动时，也会无条件向其实际
-`schedule run` child 传递 `--non-interactive`，不支持依赖终端提示的认证流程。
+`--output json` / `jsonl` implicitly launches Git children non-interactively so TTY prompts cannot
+corrupt the protocol. Use `--non-interactive` when text mode must explicitly forbid interaction.
+`--timeout 30s`, `5m`, or `1h` limits each system Git child launched by batch-git. It does not limit
+workspace-lock waits, local git2 operations, or native scheduler commands. Timeout terminates only the
+direct Git child and cannot guarantee termination of authentication, transport, or helper descendants,
+which may remain alive after a timeout result.
 
-旧的子命令 `--json` 仍保持原有顶层形状，例如 `list --json` 是对象、`schedule list --json`
-是数组。它仅用于兼容现有调用；新调用应使用全局 `--output json`。二者同时出现时，
-全局 `--output` 决定渲染方式。
+Add filters and commit hooks or signing programs are also descendants that may survive. A commit may
+update a local ref before a later step times out. Automation receiving `timeout` must recheck HEAD and
+the index and must not assume no commit was created or retry blindly.
+
+Captured Git stdout and stderr retain at most 1 MiB each. Above the limit, batch-git continues draining
+the pipe but keeps only the beginning and end, inserting `[batch-git: output truncated]` between them.
+Machine receipts contain no raw Git output. Consumers of text detail or debugging per-repository
+results must not assume captured output is complete.
+
+Registered native schedules enter through the hidden `schedule native-run` action, which always
+passes `--non-interactive` to the actual `schedule run` child. Authentication that depends on terminal
+prompts is unsupported.
+
+Legacy subcommand `--json` preserves its old top-level shape: for example, `list --json` is an object
+and `schedule list --json` is an array. It exists only for compatibility; new callers should use
+global `--output json`. When both appear, global `--output` determines rendering.
 
 ## v1 JSON receipt
 
-`--output json` 的顶层结构固定为：
+`--output json` has this fixed top-level structure:
 
 ```json
 {
@@ -66,66 +75,67 @@ Git 输出；文本详细模式或调试 per-repository 结果的消费者不得
 }
 ```
 
-核心字段如下：
+Core fields:
 
-| 字段 | 含义 |
+| Field | Meaning |
 |---|---|
-| `api_version` | 当前固定为 `v1`。 |
-| `command` | 实际执行的命令；schedule 形如 `schedule list` / `schedule run`。 |
-| `request_id` | 调用方提供的关联标识；未提供则省略。长度为 1–128 个非控制字符。 |
-| `workspace` | 已解析的工作区路径及当前 `workspace.toml` SHA-256 revision；不适用时省略。 |
-| `exit_code` / `ok` | 与进程退出码一致。部分仓库失败时 `ok=false`、`exit_code=1`，但 `error=null`。 |
-| `data` | 命令结果；允许按命令新增字段。不要假设所有命令具有相同数据模型。 |
-| `error` | 仅顶层错误（退出码 `2`）使用；成功或部分仓库失败时为 `null`。 |
+| `api_version` | Currently fixed at `v1`. |
+| `command` | Command actually executed; schedule values look like `schedule list` or `schedule run`. |
+| `request_id` | Caller-provided correlation ID; omitted when absent. It must contain 1–128 non-control characters. |
+| `workspace` | Resolved workspace path and current `workspace.toml` SHA-256 revision; omitted when not applicable. |
+| `exit_code` / `ok` | Match the process exit code. For partial repository failure, `ok=false` and `exit_code=1`, but `error=null`. |
+| `data` | Command result. Commands may add fields; do not assume one shared data model. |
+| `error` | Used only for top-level exit-code-`2` failures; `null` on success or partial repository failure. |
 
-批量操作的 `data.results[]` 以清单顺序稳定输出。每项含 `repository`、`directory`、
-`status`（`ok`、`skipped`、`failed`）、`detail`、可选 `reason_code`、可选 Git
-`exit_code` 及 `synchronized`。`detail` 面向人类，不是稳定决策输入；应优先读取
-`status` 和 `reason_code`。
+Batch `data.results[]` are emitted in stable manifest order. Each item contains `repository`,
+`directory`, `status` (`ok`, `skipped`, or `failed`), `detail`, optional `reason_code`, optional Git
+`exit_code`, and `synchronized`. `detail` is human-facing and not a stable decision input; prefer
+`status` and `reason_code`.
 
-常见仓库级 reason code 包括 `dirty_worktree`、`no_upstream`、`branch_ambiguous`、
-`branch_missing`、`repository_unavailable`、`nothing_to_push`、`nothing_to_stage`、
-`nothing_to_unstage`、`nothing_to_commit`、`unresolved_conflicts`、`detached_head`、
-`repository_operation_in_progress`、`timeout`、`git_exit` 和 `operation_failed`。不同命令可
-增加新的 code。
+Common repository reason codes include `dirty_worktree`, `no_upstream`, `branch_ambiguous`,
+`branch_missing`, `repository_unavailable`, `nothing_to_push`, `nothing_to_stage`,
+`nothing_to_unstage`, `nothing_to_commit`, `unresolved_conflicts`, `detached_head`,
+`repository_operation_in_progress`, `timeout`, `git_exit`, and `operation_failed`. Individual
+commands may add codes.
 
-暂存与提交命令使用以下稳定分类：
+Staging and commit commands use these stable classifications:
 
-| code | status | 含义 / 建议 |
+| code | status | Meaning / action |
 |---|---|---|
-| `nothing_to_stage` | `skipped` | `add` 没有发现可暂存的非忽略工作树变更。 |
-| `nothing_to_unstage` | `skipped` | `unstage` 的 index 已与 HEAD 一致；unborn 仓库的 index 为空。 |
-| `nothing_to_commit` | `skipped` | `commit` 没有发现已暂存内容；未暂存和 untracked 内容不会被隐式加入。 |
-| `unresolved_conflicts` | `failed` | `add` / `commit` 拒绝未解决冲突；进入对应仓库显式处理。 |
-| `detached_head` | `failed` | `commit` 拒绝在 detached HEAD 上创建提交；先 checkout 本地分支。 |
-| `repository_operation_in_progress` | `failed` | merge、rebase、cherry-pick、revert 等 operation 正在进行；使用显式 Git continue/abort 流程。 |
+| `nothing_to_stage` | `skipped` | `add` found no non-ignored working-tree changes to stage. |
+| `nothing_to_unstage` | `skipped` | The `unstage` index already matches HEAD; an unborn repository has an empty index. |
+| `nothing_to_commit` | `skipped` | `commit` found no staged content; unstaged and untracked content is not added implicitly. |
+| `unresolved_conflicts` | `failed` | `add` / `commit` rejected unresolved conflicts; handle the exact repository explicitly. |
+| `detached_head` | `failed` | `commit` rejected detached HEAD; check out a local branch first. |
+| `repository_operation_in_progress` | `failed` | A merge, rebase, cherry-pick, revert, or similar operation is active; use an explicit Git continue/abort flow. |
 
-## 顶层错误
+## Top-level errors
 
-参数、环境、清单、选择器、锁或持久化错误返回退出码 `2`，并在 `error` 中提供稳定 code：
+Argument, environment, manifest, selector, lock, or persistence failures return exit code `2` and a
+stable code in `error`:
 
-| code | 含义 / 建议 |
+| code | Meaning / action |
 |---|---|
-| `invalid_arguments` | 修正 CLI 参数；例如 `commit -m` 的消息不能为空。 |
-| `workspace_not_found` | 进入工作区、创建清单或设置绝对 `BATCH_GIT_WORKSPACE`。 |
-| `workspace_manifest_invalid` | 修复 `workspace.toml`。 |
-| `unknown_repository` / `ambiguous_repository` / `selector_no_match` | 先用 `list --output json` 获取规范名称。 |
-| `stale_workspace_revision` | 重新 plan，使用返回的新 revision。 |
-| `workspace_locked` | 等当前任务结束后重试。 |
-| `timeout` | 检查连接或以更大的 `--timeout` 重试。 |
-| `schedule_invalid` | 检查 schedule 声明和平台限制。 |
-| `operation_failed` | 未能进一步稳定分类的顶层失败。 |
+| `invalid_arguments` | Correct the CLI arguments; for example, `commit -m` cannot have an empty message. |
+| `workspace_not_found` | Enter a workspace, create a manifest, or set absolute `BATCH_GIT_WORKSPACE`. |
+| `workspace_manifest_invalid` | Repair `workspace.toml`. |
+| `unknown_repository` / `ambiguous_repository` / `selector_no_match` | Use `list --output json` to obtain canonical names. |
+| `stale_workspace_revision` | Plan again and use the new revision. |
+| `workspace_locked` | Wait for the current operation and retry. |
+| `timeout` | Check connectivity or retry with a larger `--timeout`. |
+| `schedule_invalid` | Check the schedule declaration and platform limits. |
+| `operation_failed` | Top-level failure with no more specific stable classification. |
 
-这些 code 由类型化错误来源决定，不从 `message` 中搜索英文关键词。错误还包含可演进的
-`message`、`retryable` 和可选 `hint`。不要通过匹配 `message` 文字
-做自动决策。机器协议不会默认包含 Git 的原始 stdout/stderr；HTTP(S) URL 的 user-info
-也会在机器诊断中清理。
+These codes come from typed error sources, never from English keyword searches in `message`. Errors
+also contain evolvable `message`, `retryable`, and optional `hint` fields. Do not make automation
+decisions by matching message text. The machine protocol does not include raw Git stdout/stderr by
+default, and sanitizes HTTP(S) URL user-info in machine diagnostics.
 
-## JSON Lines 事件
+## JSON Lines events
 
-`--output jsonl` 使用同一 `api_version`、`command`、`request_id` 和可用的 `workspace`
-字段。短命令至少输出 `started` 和带 `exit_code` / `ok` 的 `finished`；批量仓库命令在
-二者之间输出按清单顺序排列的 `repository_finished` 事件：
+`--output jsonl` uses the same `api_version`, `command`, `request_id`, and available `workspace`
+fields. Short commands emit at least `started` and a final `finished` with `exit_code` / `ok`. Batch
+repository commands emit manifest-ordered `repository_finished` events between them:
 
 ```json
 {"api_version":"v1","event":"started","command":"sync","data":{"repositories":2}}
@@ -133,32 +143,34 @@ Git 输出；文本详细模式或调试 per-repository 结果的消费者不得
 {"api_version":"v1","event":"finished","command":"sync","exit_code":0,"ok":true,"data":{"ok":2,"skipped":0,"failed":0}}
 ```
 
-无法完成解析或初始化时会输出带 `exit_code=2` 和 `ok=false` 的 `error` 事件。事件消费方应
-以最终 `finished`（或 `error`）和进程退出码作为最终结论，不应只根据中间进度事件判定成功。
-`started` 在批量仓库工作开始前输出。为保持 v1 的清单顺序保证，较晚索引的仓库即使先完成，
-其 `repository_finished` 事件也可能等待所有前序仓库完成后才输出；事件顺序不是完成时间顺序。
-单仓库 `clone` 也遵循完整生命周期，在系统 Git 开始前发出 `started`，随后发出索引为 `0` 的
-`repository_finished` 和最终 `finished`。若 clone 在登记前失败，仓库事件的 `repository` 使用
-请求的目标目录作为稳定标识。
-`add`、`commit` 和 `unstage` 也是批量仓库命令，会产生相同的 started / repository_finished /
-finished 生命周期；无内容可操作的仓库以 `skipped` 事件出现。
+Parsing or initialization failures emit an `error` event with `exit_code=2` and `ok=false`. Consumers
+must use the final `finished` (or `error`) plus the process exit code, not intermediate progress, as
+the result. `started` appears before batch repository work begins. To preserve the v1 manifest-order
+guarantee, a later-index repository that finishes early may wait for every preceding repository event;
+event order is not completion-time order.
 
-## 计划与 apply
+A single clone uses the complete lifecycle: `started` before system Git, repository index `0` in
+`repository_finished`, and final `finished`. If clone fails before registration, the requested
+destination is the stable `repository` identifier. `add`, `commit`, and `unstage` use the same
+started/repository_finished/finished lifecycle; repositories with nothing to do emit `skipped`.
 
-对内建的可写 Git/清单操作可以先做零副作用的预览：
+## Plan and apply
+
+Built-in Git and manifest write operations can be previewed without side effects:
 
 ```sh
 plan="$(batch-git --output json --plan sync --match 'service-*')"
-# 从 plan.workspace.revision 读取 revision
+# Read the revision from plan.workspace.revision.
 batch-git --output json --apply \
   --expect-workspace-revision 'sha256:…' \
   sync --match 'service-*'
 ```
 
-plan 的 `data` 包含 `mode=plan`、已解析仓库范围、风险、预期副作用、并发数和
-`workspace_revision`。它不会写清单、修改仓库、访问远端或注册调度器。
+Plan `data` contains `mode=plan`, resolved repository scope, risk, expected side effects,
+concurrency, and `workspace_revision`. It does not write the manifest, modify repositories, access
+remotes, or register schedulers.
 
-`add`、`commit` 和 `unstage` plan 还包含 `parameters`，其首版固定形状如下：
+Plans for `add`, `commit`, and `unstage` also contain a fixed first-version `parameters` shape:
 
 | command | `risk` | `side_effects` | `parameters` |
 |---|---|---|---|
@@ -166,45 +178,56 @@ plan 的 `data` 包含 `mode=plan`、已解析仓库范围、风险、预期副�
 | `commit` | `local_history` | `["git_objects","local_refs","git_indexes","hooks"]` | `{"message":"…","stages_content":false}` |
 | `unstage` | `index` | `["git_indexes"]` | `{"scope":"all_staged_changes","preserves_working_tree":true,"moves_head":false}` |
 
-这三个命令复用标准仓库选择器并在省略选择条件时覆盖整个工作区；首版不接受文件 pathspec。
-commit plan 会原样包含调用方提供的消息，日志系统应按普通提交元数据保护它，不要把 plan 当作
-秘密存储。plan 不执行 add、hook、签名或 `git read-tree`。
+These commands reuse standard repository selectors and target the whole workspace when no selector
+is given. The first version accepts no file pathspec. A commit plan includes the caller's message
+unchanged; log systems should protect it like normal commit metadata, not treat the plan as secret
+storage. Plan does not run add, hooks, signing, or `git read-tree`.
 
-`merge` plan 的每个 `selection.repositories[]` 还包含 `source_branch`、`source_mode`、
-`remote_fallback` 和 `source_refresh_remote`。`source_mode` 为 `explicit`、`feature_environment` 或
-`workspace_default`；最后一种模式按仓库读取清单中的 `default_branch`，因此不同仓库可以显示
-不同来源。`remote_fallback` 只是本地同名分支不存在时的远端解析范围，不表示 plan 已读取或
-锁定该远端引用；`source_refresh_remote` 仅在有效的来源刷新开启时出现（显式
-`--refresh-source` / `--rs`，或 `merge --default` 的默认设置），表示 apply 会 fetch 后合并的远端。
-普通 merge 的 `parameters` 包含 `update_current` 与 `refresh_source` 布尔值；
-前者对应 `--update-current` / `--uc` 的 ff-only 目标分支更新，后者对应 `--refresh-source` / `--rs`
-的来源刷新。`merge --default` 使用各仓库的 `primary_remote`，普通 merge 未指定远端时刷新同样
-使用 `primary_remote`。对 `workspace_default`，apply 的 workspace revision 前置条件会防止清单中的
-分支或主远端在 plan 后静默漂移；显式参数和环境变量仍须由调用方在 apply 时保持一致。
-`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 只为 `merge --default` 提供来源刷新的默认值（默认 true）；
-`BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 只为 `merge --feature` 提供当前分支更新的默认值（默认 false）。
-CLI 的启用或 `--no-*` 关闭选项优先，plan 中的两个布尔参数始终反映实际 apply 将采用的有效值。
-当 `update_current` 为 true 而当前分支没有 upstream 时，该仓库会跳过 ff-only pull 并继续来源合并；
-该参数表示请求的行为，不保证每个仓库都实际启动 pull。
+Each `selection.repositories[]` in a merge plan also contains `source_branch`, `source_mode`,
+`remote_fallback`, and `source_refresh_remote`. `source_mode` is `explicit`, `feature_environment`, or
+`workspace_default`. The last reads each repository's declared `default_branch`, so sources may
+differ. `remote_fallback` only describes remote resolution when no local same-named branch exists; it
+does not mean plan read or locked the remote ref. `source_refresh_remote` appears only when effective
+source refresh is enabled—explicit `--refresh-source` / `--rs`, or the default of `merge --default`—
+and identifies the remote apply will fetch and merge.
 
-apply 在获取工作区锁后、执行 Git 前重新核对 `workspace.toml` 字节摘要。它防止清单在
-plan 与执行之间漂移，但**不**保留远端、HEAD、index 或工作树状态；Git 的正常安全检查仍在
-执行时进行。批量操作始终是逐仓库完成，不提供跨仓库事务回滚。commit 的部分仓库成功不会因
-其他仓库的 hook、签名、冲突或 Git 失败而自动 reset、amend 或 rebase。
+Ordinary merge `parameters` contain Boolean `update_current` and `refresh_source`. The first maps to
+the fast-forward target update from `--update-current` / `--uc`; the second maps to source refresh
+from `--refresh-source` / `--rs`. `merge --default` uses each repository's `primary_remote`; an
+ordinary merge without an explicit remote also refreshes from `primary_remote`. For
+`workspace_default`, the apply workspace-revision precondition prevents the manifest branch or
+primary remote from drifting silently after plan. Callers must still preserve explicit arguments and
+environment variables between plan and apply.
 
-`--apply` 必须同时携带 `--expect-workspace-revision`，且只适用于有副作用的操作。首次
-创建工作区时没有可核对的清单 revision，应在明确确认后直接执行。schedule 使用已有的
-`schedule plan`、`doctor`、`generate` 和各自的 `--dry-run`；全局 `--plan schedule …`
-会明确拒绝，避免混淆两套语义。
+`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` supplies the source-refresh default only for
+`merge --default` (default true). `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` supplies the current-branch
+update default only for `merge --feature` (default false). CLI enable/`--no-*` options win, and the two
+plan Booleans always describe effective apply behavior. If `update_current` is true but the current
+branch has no upstream, that repository skips the fast-forward pull and continues merging the source;
+the parameter records requested behavior, not a guarantee that every repository starts pull.
 
-`restore` 有意以调用时的当前目录作为工作区根目录，而不是向上查找父清单。因此对它执行
-plan 或 apply 时，都必须先 `cd` 到含有 `workspace.toml` 的工作区根目录。
-clone 或 restore 的 Git 子进程失败/超时时，目标目录会保留供人工检查，且不会自动登记；
-batch-git 不会递归删除该目录，因为其内容可能已被并发进程写入。处理该目录后才能重试。
+Apply rechecks the exact `workspace.toml` byte digest after acquiring the workspace lock and before
+running Git. It prevents manifest drift between plan and execution but does **not** preserve remote,
+HEAD, index, or working-tree state; normal Git runtime checks still apply. Batch operations complete
+per repository and provide no cross-repository transactional rollback. A partially successful commit
+is not reset, amended, or rebased because another repository's hook, signing, conflict, or Git command
+fails.
 
-## 能力与 schema 发现
+`--apply` requires `--expect-workspace-revision` and applies only to side-effecting operations. When
+creating a workspace for the first time, there is no manifest revision to verify; after explicit
+confirmation, run the operation directly. Schedule uses its own `schedule plan`, `doctor`, `generate`,
+and command-specific `--dry-run`; global `--plan schedule …` is explicitly rejected to avoid mixing
+the two models.
 
-不要让 agent 假定安装的版本等于仓库源码。先查询当前二进制：
+`restore` intentionally uses the invocation's current directory as the workspace root instead of
+searching for a parent manifest. Before planning or applying restore, `cd` to the directory containing
+`workspace.toml`. If a clone or restore Git child fails or times out, the destination remains for
+inspection and is not registered automatically. batch-git does not recursively delete it because a
+concurrent process may have written content there. Handle the directory before retrying.
+
+## Capability and schema discovery
+
+Agents must not assume the installed binary equals the repository source. Query it first:
 
 ```sh
 batch-git --output json capabilities
@@ -212,50 +235,49 @@ batch-git schema operation-result
 batch-git --output json schema workspace
 ```
 
-`capabilities` 声明二进制版本、协议版本、输出格式、可用命令、plan/apply 边界和安全属性。
-`commands` 是当前构建的实际命令面：默认构建包含 `schedule`；使用 `--no-default-features`
-编译的精简二进制不会列出或接受该命令。调用方不得仅根据版本号推断 feature。
-支持本组命令的二进制会在 `commands` 中列出 `add`、`commit`、`env`、`unstage`，并在
-`safety` 中声明 `commit_stages_content=false`、`add_rejects_unresolved_conflicts=true`、
-`commit_rejects_repository_operations=true` 和 `unstage_preserves_working_trees=true`。
-`schema operation-result` 返回 v1 envelope 的 JSON Schema；`schema workspace` 返回
-`workspace.toml` 输入的 JSON 表示 schema，而不是序列化后补齐默认值的专用格式。因此它接受
-省略的默认字段，例如空的 `repositories` / `schedules` 集合，以及 schedule 的 `enabled`、
-`action`、`timezone` 和 `overlap`。Schema 使用 `additionalProperties: true`，因此消费者应验证
-核心字段但允许未来新增字段。
+`capabilities` declares binary version, protocol version, output formats, available commands,
+plan/apply boundaries, and safety properties. `commands` is the current build's real surface: default
+builds include `schedule`; a `--no-default-features` binary neither lists nor accepts it. Callers must
+not infer features from the version alone.
 
-## 命令覆盖与旧 JSON
+Binaries supporting this command group list `add`, `commit`, `env`, and `unstage` in `commands` and
+declare `commit_stages_content=false`, `add_rejects_unresolved_conflicts=true`,
+`commit_rejects_repository_operations=true`, and `unstage_preserves_working_trees=true` in `safety`.
 
-所有公开命令（包括 `env list` / `env ls`、`scan`、`clone`、`restore`、`add`、`commit`、
-`unstage`、`fetch`、
-`sync`、`pull`、`push`、`checkout`、`merge`、`exec`、透传、`forget` 和所有 schedule 子命令）
-支持全局 JSON receipt
-与 JSONL。`status`、`branch` 也提供旧的 `--json` 直接 payload。对 `exec` 和顶层
-`-- <git args>`，batch-git 只提供结构化外壳，风险标记为 `unclassified`；它不会尝试把任意
-Git 参数判断为安全或无副作用。
+`schema operation-result` returns the v1 envelope JSON Schema. `schema workspace` returns the JSON
+representation schema for `workspace.toml` input, not a serializer-specific format with defaults
+filled in. It accepts omitted defaults such as empty `repositories` / `schedules` and schedule
+`enabled`, `action`, `timezone`, and `overlap`. The schema uses `additionalProperties: true`, so
+consumers should validate core fields while allowing future additions.
 
-`env list` 不要求工作区。其 receipt 的 `command` 固定为 `env list`，`data.variables` 按帮助文档
-顺序列出环境变量；每项包含字符串字段 `name`、`default` 和 `current`。只有使用 `-d` /
-`--description` 时才增加字符串字段 `description`。
-`current` 是本次调用的最终生效值，因此会包含全局 `--jobs` 覆盖、自动发现的工作区和展开后的
-平台 state 目录，也可能包含本机绝对路径。非法环境值仍返回退出码 `2`，不会在清单中混入一个
-看似有效的回退值。自动化必须读取这些字段，不应解析文本表格或颜色。
+## Command coverage and legacy JSON
 
-旧 JSON 形状：
+Every public command—including `env list` / `env ls`, `scan`, `clone`, `restore`, `add`, `commit`,
+`unstage`, `fetch`, `sync`, `pull`, `push`, `checkout`, `merge`, `exec`, passthrough, `forget`, and
+every schedule subcommand—supports global JSON receipts and JSONL. `status` and `branch` also offer
+legacy direct-payload `--json`. For `exec` and top-level `-- <git args>`, batch-git provides only the
+structured envelope and marks risk `unclassified`; it does not attempt to classify arbitrary Git
+arguments as safe or side-effect-free.
 
-| 命令 | 旧 `--json` 顶层形状 |
+`env list` requires no workspace. Its receipt `command` is fixed at `env list`, and `data.variables`
+lists variables in help order. Each item has string fields `name`, `default`, and `current`; string
+`description` appears only with `-d` / `--description`. `current` is the effective value for this
+invocation, including global `--jobs`, auto-discovered workspace, expanded platform state directory,
+and possibly host absolute paths. Invalid environment values still return exit code `2` rather than a
+plausible fallback. Automation must read these fields instead of parsing text tables or color.
+
+Legacy JSON shapes:
+
+| Command | Legacy `--json` top-level shape |
 |---|---|
-| `list`、`find`、`info`、`status`、`branch` | object |
-| `schedule list`、`schedule doctor` | array |
-| `schedule plan`、`schedule status` | object |
+| `list`, `find`, `info`, `status`, `branch` | object |
+| `schedule list`, `schedule doctor` | array |
+| `schedule plan`, `schedule status` | object |
 
-## Agent 安全流程
+## Agent safety workflow
 
-1. 使用 `capabilities`，再使用 `info` 或 `list --output json` 确认工作区和选择器。
-2. 写操作前后用 `status --output json`、`branch --output json` 或 `find --output json` 盘点；
-   commit 前还应按精确仓库审阅 `git diff --cached`。
-3. 对有副作用的 Git/清单操作先 `--plan`；对 push / schedule 使用各自 `--dry-run`。
-4. 以每仓库 `status`、`reason_code` 和退出码分别报告 success、skipped 与 failed。
-5. commit 只提交 index；不要把 `add` 与 `commit` 合并成未经审阅的一步。未经明确授权，不要
-   实际 push、merge、注册/反注册调度器，或通过透传绕过安全边界；使用 `merge --default` 时应
-   逐仓库审阅 plan 中的 `source_branch`。
+1. Use `capabilities`, then `info` or `list --output json` to confirm the workspace and selectors.
+2. Before and after writes, inventory with `status --output json`, `branch --output json`, or `find --output json`. Before commit, review `git diff --cached` in each exact repository.
+3. Use `--plan` before side-effecting Git/manifest operations. Use the command-specific `--dry-run` for push and schedule.
+4. Report success, skipped, and failed separately using per-repository `status`, `reason_code`, and the exit code.
+5. Commit only the index. Do not combine add and commit into an unreviewed step. Without explicit authorization, do not actually push, merge, register/unregister a scheduler, or bypass safety through passthrough. For `merge --default`, review each repository's planned `source_branch`.

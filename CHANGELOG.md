@@ -1,244 +1,187 @@
-# 变更记录
+# Changelog
 
-本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
-[语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
+[简体中文](CHANGELOG.zh-CN.md)
+
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/). See `Cargo.toml` for the current package version.
 
 ## [Unreleased]
 
 ### Added
 
-- release 归档加入 `LICENSE`、README 和 Bash/Zsh/Fish/PowerShell 补全；新增显式版本、无 sudo、
-  SHA-256 校验的 macOS/Linux 与 Windows 用户目录安装器，并由 release workflow 为最终归档签发
-  GitHub build provenance attestation；同时提供 cargo-binstall release 元数据。
+- Release archives now include `LICENSE`, English and Simplified Chinese READMEs, and Bash/Zsh/Fish/PowerShell completions. New macOS/Linux and Windows user-directory installers require an explicit version, never use sudo, and verify SHA-256. The release workflow signs final archives with GitHub build provenance attestations and publishes cargo-binstall release metadata.
+- Public project documentation is now English-first with complete Simplified Chinese mirrors, cross-language navigation, and bilingual GitHub contribution templates.
 
 ### Changed
 
-- 将命令编排按 plan、自动化发现、工作区生命周期、只读查询、同步/远端、暂存提交、分支与 Git
-  透传拆分为独立模块；工作区生命周期进一步分离 clone、scan、restore 和清单 membership，只读
-  查询分离 list、status、find、info 和 branch。schedule 命令再按声明、执行、查询、本机生命周期
-  与纯辅助规则拆分，并继续隔离三平台原生产物、注册系统调用和注册状态；CLI 路径、退出码、
-  JSON/JSONL 字段、capabilities command 字符串和调度行为保持不变。
-- 将 Git 执行、克隆、检出、检查、远端、发现与结果类型，以及 CLI invocation/command/领域参数、
-  report 结果/JSONL/机器输出/文本输出、automation 选项/协议输出/错误分类边界拆分为 facade 后的
-  独立模块；新增默认启用的 `schedule` Cargo feature，普通构建保持完整命令面，精简构建可条件
-  编译移除调度命令和原生集成。
-- 以 `cli::metadata` 编译期表集中规范命令名、兼容别名、可写性、全局 plan 支持和 capabilities
-  暴露；dispatch 与 plan 继续保持穷尽 match，未改变 CLI 路径、command 字符串或公开语义。
-- Git 子进程 stdout/stderr 改为持续排空但各自最多保留 1 MiB 的头尾窗口，超限时插入稳定截断
-  标记，避免并发大输出造成无界内存增长。
+- Split command orchestration into dedicated modules for planning, automation discovery, workspace lifecycle, read-only inspection, synchronization/remotes, staging/commits, branches, and Git passthrough. Workspace lifecycle is further separated into clone, scan, restore, and manifest membership; read-only inspection is separated into list, status, find, info, and branch. Schedule commands are split into declarations, execution, queries, native lifecycle, and pure support rules while retaining isolated three-platform artifacts, registration system calls, and registration state. CLI paths, exit codes, JSON/JSONL fields, capability command strings, and schedule behavior are unchanged.
+- Split Git execution, clone, checkout, inspection, remotes, discovery, and result types; CLI invocation/command/domain arguments; report result/JSONL/machine/text output; and automation options/protocol output/error classification behind facades. Added a default-enabled `schedule` Cargo feature: normal builds keep the full command surface, while minimal builds can conditionally omit schedule commands and native integration.
+- Centralized canonical command names, compatibility aliases, mutability, global plan support, and capabilities exposure in the compile-time `cli::metadata` table. Dispatch and plan remain exhaustive matches; CLI paths, command strings, and public semantics are unchanged.
+- Git child stdout/stderr is continuously drained but retains at most a 1 MiB head/tail window per stream. A stable truncation marker is inserted beyond the limit, preventing unbounded memory growth from concurrent large output.
 
 ### Fixed
 
-- 清单仓库路径除词法校验外，还会校验现有路径或最近存在祖先的 canonical 路径；允许仍位于
-  工作区内的 symlink，拒绝通过 symlink 把现有仓库或 clone/restore 目标解析到工作区外。
-- 顶层机器错误码改由类型化 `ErrorCode` 决定，不再对自然语言消息执行 `lock`、`schedule`、
-  `timed out` 等字符串匹配，避免上下文文案导致误分类。
+- Manifest repository paths now validate the canonical path of an existing location or its nearest existing ancestor in addition to lexical checks. Symlinks that remain inside the workspace are allowed; symlinks resolving an existing repository or clone/restore destination outside the workspace are rejected.
+- Top-level machine error codes now come from typed `ErrorCode` values instead of matching natural-language strings such as `lock`, `schedule`, or `timed out`, preventing contextual wording from changing classifications.
 
 ### Validation
 
-- 增加顶层扁平命令面与完整 capabilities 命令名册回归，防止后续内部整理意外改名或引入嵌套路径。
-- 增加无默认 features 的编译、CLI 命令面和 capabilities 名册验证；默认 features 继续执行完整
-  schedule、automation protocol 与 MVP 回归。
-- CI 新增无默认 features 的 check、完整测试、Clippy、release build，以及精简帮助、capabilities
-  和缺失 schedule 命令的行为验证。
-- 增加工作区外 symlink 黑盒回归、类型化错误分类单元测试和多 MiB 子进程输出有界保留测试。
+- Added regression coverage for the flat top-level command surface and complete capabilities roster, preventing later internal work from accidentally renaming commands or adding nested paths.
+- Added compilation, CLI-surface, and capability-roster checks without default features. Default features continue to run complete schedule, automation-protocol, and MVP regressions.
+- CI now runs no-default-feature check, full tests, Clippy, release build, and behavioral verification for minimal help, capabilities, and the absent schedule command.
+- Added black-box coverage for workspace-escaping symlinks, unit tests for typed error classification, and bounded-retention tests for multi-MiB child output.
 
 ## [0.4.3] - 2026-08-06
 
 ### Added
 
-- 新增只读命令 `batch-git env list`（别名 `env ls`），集中展示支持的环境变量、默认值和本次调用的
-  最终生效值；使用 `-d` / `--description` 时增加说明，文本模式将 `CURRENT` 列在兼容终端中显示为
-  绿色，并支持 v1 JSON / JSONL 与 capabilities 发现。
+- Added read-only `batch-git env list` (alias `env ls`) to show supported environment variables, defaults, and effective values for the current invocation. `-d` / `--description` adds descriptions; text mode displays `CURRENT` in green on compatible terminals and supports v1 JSON/JSONL plus capability discovery.
 
 ### Changed
 
-- 合并默认分支时，`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 默认开启，自动刷新并合并远端最新
-  default；通过 `merge --feature` 合并特性分支时，`BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 默认
-  关闭，仅在配置开启时更新当前分支。`--uc`、`--rs` 与各自 `--no-*` 选项始终优先。
-- 移除不区分来源类型的 `BATCH_GIT_MERGE_UPDATE_CURRENT` 与
-  `BATCH_GIT_MERGE_REFRESH_SOURCE` 环境变量。
+- `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` is enabled by default when merging default branches, refreshing and merging the newest remote default. `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` is disabled by default for `merge --feature` and updates the current branch only when configured. `--uc`, `--rs`, and their `--no-*` forms always take precedence.
+- Removed the source-agnostic `BATCH_GIT_MERGE_UPDATE_CURRENT` and `BATCH_GIT_MERGE_REFRESH_SOURCE` environment variables.
 
 ### Fixed
 
-- 文本表格在交互终端中按可用列宽对超长单元格软换行，续行保持原列起点对齐，不再由终端硬换行
-  后落到第一列；ANSI 颜色和 Unicode 宽度计算在换行后仍保持正确。
+- Text tables now soft-wrap overlong cells to available terminal width while keeping continuation lines aligned to the original column instead of falling back to column one. ANSI color and Unicode width calculations remain correct after wrapping.
 
 ## [0.4.2] - 2026-08-06
 
 ### Added
 
-- `merge` 新增 `--refresh-source`（`--rs`）：刷新来源远端引用后，合并最新的 remote-tracking
-  来源分支而不移动本地来源分支；可与既有 `--update-current` 的新别名 `--uc` 组合，用于先
-  ff-only 更新当前目标分支再合并来源。两个行为可由
-  `BATCH_GIT_MERGE_UPDATE_CURRENT` / `BATCH_GIT_MERGE_REFRESH_SOURCE` 配置默认值，并由 CLI
-  启用或 `--no-*` 关闭选项覆盖。
+- Added `merge --refresh-source` (`--rs`): after refreshing source remote references, merge the newest remote-tracking source without moving the local source branch. It can be combined with the new `--uc` alias for `--update-current` to fast-forward the target first. Both behaviors were configurable through `BATCH_GIT_MERGE_UPDATE_CURRENT` / `BATCH_GIT_MERGE_REFRESH_SOURCE` defaults and overridable by CLI enable or `--no-*` options.
 
 ### Fixed
 
-- `merge --update-current`（`--uc`）在当前目标分支没有 upstream 时跳过 ff-only pull，允许仅本地的
-  特性分支继续合并来源分支。
+- `merge --update-current` (`--uc`) now skips the fast-forward-only pull when the target branch has no upstream, allowing local-only feature branches to continue merging the source.
 
 ## [0.4.1] - 2026-08-06
 
 ### Fixed
 
-- `merge` 在未要求 `--update-current` 时，会先拒绝本地 tracking ref 已显示为落后或分叉的当前
-  分支，避免对过期目标分支启动 Git merge 并遗留阻塞后续 `pull` 的进行中合并状态。
+- Without `--update-current`, `merge` now rejects a current branch whose local tracking ref already shows it is behind or diverged. This avoids starting a Git merge on an outdated target and leaving an in-progress merge that blocks a later pull.
 
 ## [0.4.0] - 2026-08-04
 
 ### Added
 
-- 新增安全批量 `batch-git add`：复用名称、相对目录、`--match` 与 `--all` 选择器，省略选择器时
-  覆盖整个工作区；首版不接受文件 pathspec，固定暂存全部非忽略的新增、修改和删除，并拒绝
-  未解决冲突；
-- 新增 `batch-git commit -m <message>`：只提交既有 index，不隐式 add，不提供 amend、空提交
-  或 hook bypass；拒绝 detached HEAD、未解决冲突和进行中的 merge/rebase/cherry-pick/revert
-  等 Git operation；
-- 新增全量 `batch-git unstage`：只恢复选中仓库的 index、保留工作树且不移动 HEAD；unborn HEAD
-  使用 `git read-tree --empty` 安全清空暂存区；
-- add/commit/unstage 接入 v1 JSON / JSONL、plan/apply、capabilities 和稳定 reason code；plan
-  公开 `git_indexes`、`git_objects`、`local_refs`、`hooks` 等副作用及命令参数边界。
+- Added safe batch `batch-git add`, reusing name, relative-directory, `--match`, and `--all` selectors and targeting the whole workspace when omitted. The first version accepts no pathspec, stages all non-ignored additions/modifications/deletions, and rejects unresolved conflicts.
+- Added `batch-git commit -m <message>`, which commits only the existing index, never implicitly adds, and offers no amend, empty-commit, or hook-bypass behavior. It rejects detached HEAD, unresolved conflicts, and in-progress merge/rebase/cherry-pick/revert operations.
+- Added full `batch-git unstage`, which restores only selected indexes, preserves working trees, and does not move HEAD. An unborn HEAD safely clears the index with `git read-tree --empty`.
+- Integrated add/commit/unstage with v1 JSON/JSONL, plan/apply, capabilities, and stable reason codes. Plans expose `git_indexes`, `git_objects`, `local_refs`, `hooks`, and command-parameter boundaries.
 
 ### Fixed
 
-- `unstage` 使用结构化 HEAD 状态区分真正的 unborn 仓库与名为 `(unborn)` 的合法分支，避免在
-  后一种情况下错误清空整个 index。
-- `commit` 在 Git operation 同时存在未解决冲突时稳定返回 `unresolved_conflicts`，并继续为
-  已解决但尚未完成的 merge/rebase/cherry-pick/revert 返回
-  `repository_operation_in_progress`。
+- `unstage` now uses structured HEAD state to distinguish a truly unborn repository from a valid branch literally named `(unborn)`, preventing an incorrect full-index clear in the latter case.
+- When an in-progress Git operation also has unresolved conflicts, `commit` consistently returns `unresolved_conflicts`; resolved but incomplete merge/rebase/cherry-pick/revert operations continue to return `repository_operation_in_progress`.
 
 ### Security
 
-- commit 保留仓库既有 hook、身份和签名策略，不提供自动绕过选项；机器模式继续强制非交互。
-  hook、filter、签名超时或跨仓库失败不会触发 reset、amend、rebase 等自动回滚，调用方须检查
-  部分成功及可能已经更新的本地 ref。
+- Commit preserves repository hooks, identity, and signing policy and offers no automatic bypass. Machine mode remains non-interactive. Hook, filter, signing timeout, or cross-repository failure never triggers automatic reset, amend, or rebase; callers must inspect partial success and possibly updated local refs.
 
 ## [0.3.0] - 2026-08-04
 
 ### Added
 
-- 新增 `batch-git merge --default`（短参数 `-d`），逐仓库读取 `workspace.toml` 的
-  `default_branch` 并合入各自当前分支；支持多级复杂分支名，本地分支不存在时固定回退到该仓库
-  的 `primary_remote`，且不会隐式 fetch；
-- merge plan 为每个仓库新增 `source_branch`、`source_mode` 和 `remote_fallback`，便于在
-  apply 前审阅显式分支、环境特性分支或逐仓库默认分支来源。
+- Added `batch-git merge --default` (short option `-d`), reading each repository's `default_branch` from `workspace.toml` and merging it into the current branch. Multi-component names are supported; when no local branch exists, resolution falls back only to that repository's `primary_remote` and does not fetch implicitly.
+- Merge plans now expose `source_branch`, `source_mode`, and `remote_fallback` per repository so explicit, feature-environment, or per-repository default sources can be reviewed before apply.
 
 ### Fixed
 
-- 普通 `merge` 现在正确读取已文档化的 `BATCH_GIT_REMOTE`，可在多个远端存在同名源分支时按
-  环境配置消歧。
+- Ordinary `merge` now correctly reads the documented `BATCH_GIT_REMOTE`, resolving same-named source branches across multiple remotes through environment configuration.
 
 ### Security
 
-- 升级 `git2` 至 `0.21.0`，修复 RUSTSEC-2026-0183 与 RUSTSEC-2026-0184 报告的潜在未定义
-  行为；网络操作仍统一由系统 Git 执行，`git2` 保持禁用默认网络特性。
+- Upgraded `git2` to `0.21.0`, fixing potential undefined behavior reported by RUSTSEC-2026-0183 and RUSTSEC-2026-0184. Network operations remain delegated to system Git, and default git2 network features remain disabled.
 
 ### Validation
 
-- 新增 CLI 与 automation protocol 黑盒回归，覆盖不同复杂默认分支、主远端回退、多远端消歧、
-  参数冲突和无副作用 plan；`cargo-deny` 的 advisories、bans、licenses、sources 检查通过。
+- Added CLI and automation-protocol black-box regressions for different complex default branches, primary-remote fallback, multi-remote ambiguity, argument conflicts, and side-effect-free plans. cargo-deny advisories, bans, licenses, and sources checks pass.
 
 ## [0.2.0] - 2026-07-31
 
 ### Added
 
-- GitHub Actions 质量门禁、三平台发布构建、依赖升级与安全审计；
-- 贡献、安全、兼容性、架构、自动化契约和 agent 协作说明；
-- `batch-git-automation` 仓库内 skill，用于安全编排多仓库操作。
-- automation protocol v1：全局 `--output json|jsonl`、`--request-id`、所有公开内建命令与
-  schedule 子命令的机器 receipt，以及不污染 stdout、按清单顺序输出的批量仓库事件流；单仓库
-  `clone` 同样输出完整的 `started`、`repository_finished`、`finished` 生命周期；
-- `capabilities` 与 `schema operation-result|workspace`，使 agent 可从当前二进制发现协议、
-  安全边界和 JSON Schema，而不是猜测安装版本；
-- `--plan` / `--apply --expect-workspace-revision`：零副作用预览已解析范围、风险和副作用，
-  并在执行前核对 `workspace.toml` SHA-256 revision；
-- `--non-interactive` 与每个系统 Git 子进程的 `--timeout`；timeout 只终止直接启动的子进程，Git
-  后代进程可能继续存活；clone/restore 超时或失败时保留目标目录供人工检查，避免递归删除
-  并发写入的内容；
-- 原生 schedule 的隐藏 `native-run` child 始终非交互，避免 scheduler 或无终端环境等待 Git
-  认证提示，并把 child 在获取锁后发现的 stale revision 保持为
-  `stale_workspace_revision`，而非泛化为调度器错误；
-- 自动化协议黑盒测试，覆盖新旧 JSON 兼容、结构化参数错误、schedule receipt 和 stale-plan
-  拒绝。
+- Added GitHub Actions quality gates, three-platform release builds, dependency upgrades, and security audits.
+- Added contribution, security, compatibility, architecture, automation-contract, and agent-collaboration documentation.
+- Added the repository-local `batch-git-automation` skill for safely orchestrating multi-repository operations.
+- Added automation protocol v1: global `--output json|jsonl`, `--request-id`, machine receipts for every public built-in and schedule subcommand, and manifest-ordered batch repository event streams that do not contaminate stdout. Single-repository clone also emits a complete `started`, `repository_finished`, `finished` lifecycle.
+- Added `capabilities` and `schema operation-result|workspace`, allowing agents to discover protocol, safety boundaries, and JSON Schema from the current binary instead of guessing the installed version.
+- Added `--plan` / `--apply --expect-workspace-revision`: side-effect-free previews of resolved scope, risk, and side effects, with `workspace.toml` SHA-256 revision verification before execution.
+- Added `--non-interactive` and per-system-Git-child `--timeout`. Timeout terminates only the direct child and Git descendants may survive. Clone/restore destinations are preserved after timeout or failure to avoid recursively deleting concurrently written content.
+- The hidden native-schedule `native-run` child is always non-interactive, preventing a scheduler or terminal-less environment from waiting for Git authentication prompts. A stale revision found after the child acquires the lock remains `stale_workspace_revision` rather than becoming a generic scheduler error.
+- Added automation-protocol black-box tests for legacy/new JSON compatibility, structured argument errors, schedule receipts, and stale-plan rejection.
 
 ### Changed
 
-- `status` 与 `branch` 增加兼容的直接 `--json` payload；已有 `list`、`find`、`info` 和
-  schedule `--json` 顶层结构保持不变。
-- 机器模式不再转发 Git 或原生调度器的原始 stdout/stderr；批量结果通过稳定 status 和
-  `reason_code` 表达，避免凭据或非结构化诊断进入协议。
+- `status` and `branch` gained compatible direct `--json` payloads. Existing `list`, `find`, `info`, and schedule `--json` top-level shapes remain unchanged.
+- Machine mode no longer forwards raw Git or native-scheduler stdout/stderr. Batch results use stable status and `reason_code`, preventing credentials or unstructured diagnostics from entering the protocol.
 
 ## [0.1.1] - 2026-07-29
 
-补丁版本，修复 Git 代理、远端配置和定时任务并发问题，并缩小发布产物。
+Patch release fixing Git proxy, remote configuration, and schedule concurrency while reducing artifact size.
 
-### 修复
+### Fixed
 
-- `clone` 改由系统 Git 执行，继续支持指定分支、浅克隆、单分支、自定义远端名、
-  Git 凭据配置和交互认证；本地路径浅克隆仍保持真正的 shallow 语义；
-- 修复清单未声明独立 `push_url` 时，本地仓库遗留的 push URL 不会被清除、后续
-  push 可能发往非清单地址的问题；
-- 修复 `--jobs 1` 下 Git 透传的 stdout/stderr 仍被管道捕获，导致 `rebase -i`、
-  编辑器和其他 TTY 交互命令失败的问题；
-- schedule register/unregister 现在纳入工作区锁，避免与 update/remove 或并发注册
-  之间产生旧配置覆盖和注册状态竞态。
+- Clone now uses system Git while retaining branch selection, shallow clone, single-branch mode, custom remote names, Git credential configuration, and interactive authentication. Shallow clones of local paths retain true shallow semantics.
+- Fixed stale local push URLs not being cleared when the manifest omitted a separate `push_url`, which could send later pushes to an address not declared by the manifest.
+- Fixed Git passthrough stdout/stderr remaining piped under `--jobs 1`, which broke `rebase -i`, editors, and other TTY-interactive commands.
+- Schedule register/unregister now participates in the workspace lock, preventing stale-configuration overwrites and registration-state races with update/remove or concurrent registration.
 
-### 构建与发布
+### Build and release
 
-- 禁用 `git2/libgit2` 的网络特性，网络访问统一交给系统 Git；
-- 移除 libssh2 和 OpenSSL 运行时依赖，macOS 产物不再依赖 Homebrew OpenSSL 路径；
-- 移除 Chrono 未使用的 Serde 特性；
-- release 启用 size 优化、LTO、单 codegen unit、abort panic 和符号剥离；macOS
-  arm64 参考产物由约 `4.5 MiB` 降至约 `1.9 MiB`。
+- Disabled git2/libgit2 network features; all network access is delegated to system Git.
+- Removed libssh2 and OpenSSL runtime dependencies; macOS artifacts no longer depend on a Homebrew OpenSSL path.
+- Removed Chrono's unused Serde feature.
+- Enabled size optimization, LTO, one codegen unit, abort-on-panic, and symbol stripping for release. The reference macOS arm64 artifact dropped from approximately `4.5 MiB` to `1.9 MiB`.
 
-### 验证
+### Validation
 
-- 新增系统 Git clone 参数代理和 push URL 同步回归测试；
-- 全部单元与端到端测试、Clippy、格式检查和 release 构建通过。
+- Added regressions for system-Git clone argument proxying and push-URL synchronization.
+- All unit/end-to-end tests, Clippy, formatting, and release builds passed.
 
 ## [0.1.0] - 2026-07-29
 
-首个封版版本。
+First stable release.
 
-### 工作区管理
+### Workspace management
 
-- 支持扫描已有仓库、克隆并登记、从清单恢复、fetch/prune 和安全 sync；
-- 使用 `workspace.toml` 保存仓库、远端、默认分支和 schedule 声明；
-- 清单校验、原子写入、URL 凭据清理和工作区锁；
-- 支持工作区/仓库信息、状态、当前分支、列表和 JSON 输出。
+- Scan existing repositories, clone and register, restore from the manifest, fetch/prune, and safe sync.
+- Store repositories, remotes, default branches, and schedule declarations in `workspace.toml`.
+- Validate manifests, write atomically, sanitize URL credentials, and lock the workspace.
+- Inspect workspace/repository information, status, current branches, lists, and JSON output.
 
-### 分支与 Git 操作
+### Branch and Git operations
 
-- 支持本地/远端分支搜索、默认分支和特性分支切换、从显式起点创建分支，并可直接合并当前特性分支；
-- 支持远端同名分支消歧；
-- 支持 merge 前可选 fast-forward-only 更新，以及独立的安全 pull；
-- 支持安全批量 push、首次推送时显式建立 upstream、全工作区 Git 透传和按仓库/通配模式选择的 `exec`；
-- 对 `git commit` 的 “nothing to commit” 结果按 skipped 聚合。
+- Search local/remote branches, check out default and feature branches, create branches from explicit starting points, and merge the current feature branch directly.
+- Resolve same-named remote branch ambiguity.
+- Optionally fast-forward before merge, plus an independent safe pull.
+- Safe batch push, explicit upstream creation on first push, whole-workspace Git passthrough, and repository/pattern-selected `exec`.
+- Aggregate `git commit` “nothing to commit” as skipped.
 
-### 执行体验
+### Execution experience
 
-- 有界并发、清单顺序输出和仓库级聚合结果；
-- 交互终端进度、非交互稳定表格、Unicode 宽度对齐和 `NO_COLOR`；
-- 退出码区分完成、仓库级失败和配置/校验错误。
+- Bounded concurrency, manifest-order output, and per-repository aggregate results.
+- Interactive progress, stable non-interactive tables, Unicode width alignment, and `NO_COLOR`.
+- Exit codes distinguish completion, repository-level failure, and configuration/validation errors.
 
-### 定时任务
+### Scheduled jobs
 
-- 支持 `sync` / `pull`，每日、固定间隔和六段式 cron；
-- 支持计划、验证、生成、注册、更新、状态、立即运行、反注册和删除；
-- 支持 macOS launchd、Linux systemd user timer 与 Windows Task Scheduler；
-- 支持 overlap 策略、注册定义一致性检查和可选后台日志。
+- `sync` / `pull`, daily time, fixed intervals, and six-field cron.
+- Plan, validate, generate, register, update, status, immediate run, unregister, and remove.
+- macOS launchd, Linux systemd user timers, and Windows Task Scheduler.
+- Overlap policy, registered-definition consistency checks, and optional background logs.
 
-### 已知限制
+### Known limitations
 
-- 清单重写不保留 TOML 注释和原始排版；
-- schedule 时区通过 `BATCH_GIT_TZ` 配置，未设置时使用系统时区；
-- launchd cron 秒字段必须为 `0`；
-- Windows Task Scheduler 暂不支持 cron，固定间隔限制为 `1m` 至 `31d`；
-- 不支持 Quartz `L`、`W`、`#` 或年份字段；
-- 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
-- 交互式 Git 子进程需使用 `--jobs 1`。
+- Manifest rewrites do not preserve TOML comments or original formatting.
+- Schedule timezone uses `BATCH_GIT_TZ`; when unset, the system timezone applies.
+- The launchd cron seconds field must be `0`.
+- Windows Task Scheduler does not yet support cron; fixed intervals range from `1m` through `31d`.
+- Quartz `L`, `W`, `#`, and year fields are unsupported.
+- Batch operations provide no cross-repository transactional rollback and may partially succeed.
+- Interactive Git children require `--jobs 1`.
 
 [Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.3...HEAD
 [0.4.3]: https://github.com/livenv/batch-git/compare/v0.4.2...v0.4.3

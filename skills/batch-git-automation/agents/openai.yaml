@@ -1,4 +1,4 @@
 interface:
-  display_name: "Batch Git Automation"
-  short_description: "Safely automate multi-repository Git workspaces"
-  default_prompt: "Use $batch-git-automation to inspect this workspace and safely plan the requested multi-repository Git operation."
+  display_name: "Batch Git Automation / 批量 Git 自动化"
+  short_description: "Safe multi-repo Git automation / 安全的多仓库 Git 自动化"
+  default_prompt: "Use $batch-git-automation to inspect this workspace and safely plan the requested multi-repository Git operation. / 使用 $batch-git-automation 检查此工作区，并安全规划所需的多仓库 Git 操作。"

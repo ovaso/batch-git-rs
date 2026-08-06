@@ -1,25 +1,25 @@
-# Agent 协作约定
+# Agent Collaboration Guidelines
 
-本仓库是安全优先的 Rust CLI。先阅读 `README.md`、`docs/DEVELOPMENT.md`，再按任务需要
-阅读 `docs/ARCHITECTURE.md`、`docs/AUTOMATION_CONTRACTS.md` 和仓库内
-`skills/batch-git-automation/SKILL.md`。
+[简体中文](AGENTS.zh-CN.md)
 
-## 工作规则
+This repository contains a safety-first Rust CLI. Read `README.md` and
+`docs/DEVELOPMENT.md` first. Then, as required by the task, read
+`docs/ARCHITECTURE.md`, `docs/AUTOMATION_CONTRACTS.md`, and the repository-local
+`skills/batch-git-automation/SKILL.md`.
 
-- 保持 `workspace.toml` 是唯一的持久化工作区事实来源；不得引入第二份状态文件。
-- 不要使 `batch-git` 隐式执行 merge、rebase、stash、reset、clean、force push 或删除仓库。
-- 改动 CLI 参数、退出码、JSON 字段、清单 schema 或 schedule 行为时，同步更新帮助文本、
-  对应用户文档、`AUTOMATION_CONTRACTS.md` 与 `CHANGELOG.md`。
-- 修改 v1 receipt、JSONL 事件、`reason_code`、`capabilities`、`schema` 或 plan/apply 语义时，
-  同步维护 `skills/batch-git-automation/`，并在 `tests/automation_protocol.rs` 补充黑盒回归。
-- 修改平台调度器代码时，保留 launchd、systemd 和 Windows 行为的明确差异；不得把主机路径
-  或本地用户名写入测试断言。
-- 优先补行为测试而非实现细节测试。网络、文件系统和调度器调用必须有可替代的测试边界。
-- 除非用户明确要求，否则不执行有远端副作用的 Git 命令或注册本机 schedule。
+## Working rules
 
-## 验证
+- Keep `workspace.toml` as the only persistent source of truth for a workspace. Do not introduce a second state file.
+- Do not make `batch-git` implicitly merge, rebase, stash, reset, clean, force-push, or delete repositories.
+- When changing CLI arguments, exit codes, JSON fields, the manifest schema, or schedule behavior, update the help text, both language versions of the relevant user documentation and automation contracts, and both changelogs together.
+- When changing v1 receipts, JSONL events, `reason_code`, `capabilities`, `schema`, or plan/apply semantics, update `skills/batch-git-automation/` and add black-box coverage to `tests/automation_protocol.rs`.
+- When changing platform scheduler code, preserve the explicit behavioral differences between launchd, systemd, and Windows. Do not put host-specific paths or local usernames in test assertions.
+- Prefer behavioral tests over implementation-detail tests. Network, filesystem, and scheduler calls must have replaceable test boundaries.
+- Unless the user explicitly requests it, do not run Git commands with remote side effects or register a schedule on the host.
 
-Rust 代码变更至少执行：
+## Validation
+
+At minimum, run the following for Rust changes:
 
 ```sh
 cargo fmt -- --check
@@ -28,4 +28,4 @@ cargo clippy --all-targets --all-features -- -D warnings
 cargo build --locked --release
 ```
 
-文档或自动化变更也应检查链接、YAML/TOML 语法，并说明未能在本机覆盖的平台。
+For documentation or automation changes, also check links and YAML/TOML syntax, and report any platforms that could not be covered locally.

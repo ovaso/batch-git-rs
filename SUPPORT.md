@@ -1,8 +1,10 @@
-# 获取帮助
+# Support
 
-- 使用问题与文档改进：提交 GitHub Discussion 或 issue；
-- 可复现缺陷：使用 bug report 模板并附上版本、操作系统、Git 版本和最小复现；
-- 安全问题：遵循 [SECURITY.md](SECURITY.md)，不要公开披露；
-- 功能建议：说明目标工作流、预期安全边界和跨平台影响。
+[简体中文](SUPPORT.zh-CN.md)
 
-请勿在 issue 中发布 access token、私钥、完整含凭据 remote URL 或私有仓库内容。
+- Usage questions and documentation improvements: open a GitHub Discussion or issue.
+- Reproducible defects: use the bug report template and include the version, operating system, Git version, and a minimal reproduction.
+- Security issues: follow [SECURITY.md](SECURITY.md) and do not disclose them publicly.
+- Feature proposals: describe the target workflow, expected safety boundaries, and cross-platform impact.
+
+Do not publish access tokens, private keys, complete credential-bearing remote URLs, or private repository contents in an issue.

@@ -1,26 +1,29 @@
-# 开发与发布说明
+# Development and Release Guide
 
-## 1. 技术边界
+[简体中文](zh-CN/DEVELOPMENT.md)
 
-- `git2/libgit2`：本地仓库读取、checkout、远端和分支配置，不启用网络特性；
-- 系统 Git CLI：add、commit、restore/read-tree unstage、clone、fetch、push、merge、pull
-  以及 `--` 后的精确透传；
-- `workspace.toml`：声明式、可复制的工作区清单；
-- `.workspace.lock`：串行化可能修改 Git 状态或清单的 batch-git 进程；
-- `automation result v1`：全局 `--output json|jsonl` 的稳定协议；旧子命令 `--json` 只作兼容；
-- Rayon：有界并发和稳定结果顺序；
-- clap：严格的内建命令边界和命令帮助。
+## 1. Technical boundaries
 
-禁止隐式执行会改变提交关系或丢失工作树数据的动作。除非用户明确调用对应命令，
-不自动 pull、merge、rebase、stash、reset、clean 或切换分支。
-内建 `commit` 只读取既有 index，不得增加 implicit add、amend、空提交或 hook bypass；应拒绝
-detached HEAD、未解决冲突和进行中的 Git operation。内建 `add` 首版固定为全部非忽略新增、
-修改和删除且拒绝冲突；`unstage` 必须只改 index、保留工作树，unborn HEAD 使用
-`git read-tree --empty`，不得引入第二份持久化状态。
+- `git2/libgit2`: local repository inspection, checkout, remote configuration, and branch configuration; network features are disabled.
+- System Git CLI: add, commit, restore/read-tree unstage, clone, fetch, push, merge, pull, and exact passthrough after `--`.
+- `workspace.toml`: declarative, portable workspace manifest.
+- `.workspace.lock`: serializes batch-git processes that may modify Git state or the manifest.
+- `automation result v1`: stable protocol for global `--output json|jsonl`; legacy subcommand `--json` is compatibility-only.
+- Rayon: bounded concurrency and stable result order.
+- clap: strict built-in command boundaries and command help.
 
-## 2. 本地验证
+Implicit actions that change commit relationships or lose working-tree data are forbidden. Unless the
+user explicitly invokes the corresponding command, do not automatically pull, merge, rebase, stash,
+reset, clean, or switch branches. Built-in `commit` reads the existing index only and must not gain
+implicit add, amend, empty-commit, or hook-bypass behavior; it rejects detached HEAD, unresolved
+conflicts, and in-progress Git operations. The first version of built-in `add` always stages every
+non-ignored addition, modification, and deletion and rejects conflicts. `unstage` changes only the
+index, preserves the working tree, and uses `git read-tree --empty` for an unborn HEAD. Do not add a
+second persistent state source.
 
-提交或封版前执行：
+## 2. Local validation
+
+Run the following before committing or releasing:
 
 ```sh
 cargo fmt -- --check
@@ -39,80 +42,82 @@ cargo build --locked --release --no-default-features
 ./target/release/batch-git schedule --help
 ```
 
-默认 feature `schedule` 保持正式发布命令面不变；`--no-default-features` 用于验证精简构建。
-该构建必须继续读取和原样保留清单中的 schedule 声明，但 `capabilities.commands` 和顶层帮助中
-不得宣称存在未编译的 `schedule` 命令。三平台 artifact 生成器在启用 feature 时都参与编译和
-测试，以保留跨平台预览；只允许真实宿主系统调用使用 `target_os` 条件编译。
+The default `schedule` feature preserves the official release command surface.
+`--no-default-features` validates the minimal build. That build must continue to read and preserve
+schedule declarations, but neither `capabilities.commands` nor top-level help may claim the
+uncompiled `schedule` command exists. With the feature enabled, all three platform artifact
+generators participate in compilation and tests to preserve cross-platform previews. Only real host
+system calls may use `target_os` conditional compilation.
 
-发布前还应运行 `cargo deny check advisories bans licenses sources`。GitHub Actions 会在
-Linux 上分别对默认与无默认 features 执行完整质量门禁，并在 Linux、macOS 与 Windows 上构建
-release 产物；它还会生成可下载的 LCOV 覆盖率报告。tag `v*` 触发带补全和许可证的 GitHub
-Release 归档、逐文件及统一 SHA-256、安装器和 GitHub build provenance attestation。
+Before release, also run `cargo deny check advisories bans licenses sources`. GitHub Actions applies
+the complete quality gate on Linux with both default and no-default features and builds release
+artifacts on Linux, macOS, and Windows. It also publishes a downloadable LCOV coverage report. A
+`v*` tag triggers GitHub Release archives containing completions and the license, per-file and
+combined SHA-256 checksums, installers, and GitHub build provenance attestations.
 
-发布构建还应检查动态依赖，确保没有意外链接本机构建环境中的 Homebrew、包管理器
-或其他非系统绝对路径。macOS 可使用 `otool -L target/release/batch-git`，Linux 可
-使用 `ldd target/release/batch-git`。
+Release builds must also inspect dynamic dependencies to ensure nothing links unexpectedly to
+Homebrew, another package manager, or a non-system absolute path from the build host. Use
+`otool -L target/release/batch-git` on macOS or `ldd target/release/batch-git` on Linux.
 
-`tests/mvp.rs` 覆盖主要端到端工作流；add/commit/unstage 变更应覆盖 index、工作树、unborn、
-冲突、detached HEAD、hook 和部分成功边界。各模块内单元测试覆盖解析、清单校验、输出和平台
-定义生成。`tests/automation_protocol.rs` 覆盖 v1 receipt、旧 JSON 兼容、结构化参数错误、JSONL
-生命周期、暂存命令 reason code / capabilities / plan parameters，以及 plan/apply 在加锁前后都
-生效的 revision 前置条件。
+`tests/mvp.rs` covers the primary end-to-end workflows. Changes to add/commit/unstage should cover
+the index, working tree, unborn branches, conflicts, detached HEAD, hooks, and partial success.
+Module unit tests cover parsing, manifest validation, output, and platform definition generation.
+`tests/automation_protocol.rs` covers v1 receipts, legacy JSON compatibility, structured argument
+errors, JSONL lifecycles, staging-command reason codes/capabilities/plan parameters, and revision
+preconditions both before and after plan/apply locking.
 
-## 3. 文档维护约定
+## 3. Documentation maintenance
 
-- README 只保留定位、安装、快速开始和文档入口；
-- 用户行为写入 `docs/USER_GUIDE.md`；
-- 清单和环境变量写入 `docs/WORKSPACE.md`；
-- schedule 平台细节写入 `docs/SCHEDULES.md`；
-- 版本交付内容写入 `CHANGELOG.md`；
-- `Request.md`、`OPTIMISE.md`、`SUGGESTIONS.md` 作为历史设计记录，不应被引用为
-  当前行为规范。
-- 机器可读输出变更须同步维护 `AUTOMATION_CONTRACTS.md`，新增字段可以向后兼容，
-  删除或改变字段类型必须在下一个主版本进行；
-- 修改 `--output`、`--request-id`、`--non-interactive`、`--timeout`、`--plan` / `--apply`、
-  reason code、JSONL 事件或 `schema` 时，必须更新 automation contracts、用户手册、能力名册
-  和仓库内 skill，并增加黑盒协议测试；
-- 公开行为或安全边界变化须写入 `CHANGELOG.md` 的 `Unreleased`；
-- 不要仅靠注释解释跨模块决策；将持久化格式、锁、并发或系统 Git 边界的变更同步至
-  `ARCHITECTURE.md`。
+- `README.md` is the English project entry point; `README.zh-CN.md` is its Simplified Chinese mirror. Keep positioning, installation, quick start, and document links there.
+- English topic guides live in `docs/`; synchronized Simplified Chinese translations live in `docs/zh-CN/`.
+- User behavior belongs in `docs/USER_GUIDE.md`.
+- Manifest and environment variables belong in `docs/WORKSPACE.md`.
+- Scheduler platform details belong in `docs/SCHEDULES.md`.
+- Release-level delivery belongs in `CHANGELOG.md`, with `CHANGELOG.zh-CN.md` kept in sync.
+- Machine-readable output changes must update `AUTOMATION_CONTRACTS.md`. New fields may be backward-compatible; removals or type changes require the next major version.
+- Changes to `--output`, `--request-id`, `--non-interactive`, `--timeout`, `--plan` / `--apply`, reason codes, JSONL events, or `schema` must update the automation contracts, user guide, capability roster, repository-local skill, and black-box protocol tests.
+- Public behavior or safety-boundary changes must enter the `Unreleased` section of both changelogs.
+- Do not rely only on comments for cross-module decisions. Update `ARCHITECTURE.md` when persistent formats, locking, concurrency, or the system Git boundary changes.
 
-新增或修改 CLI 参数时，应同步检查：
+When adding or changing CLI arguments, check together:
 
-1. clap 的 `--help` 文案；
-2. README 常用命令表；
-3. 对应专题手册；
-4. 环境变量表和清单示例；
-5. CHANGELOG。
+1. clap `--help` text.
+2. The README common-command table.
+3. The relevant topic guide in both languages.
+4. Environment-variable tables and manifest examples.
+5. Both changelogs.
 
-## 4. 封版检查清单
+## 4. Release checklist
 
-- [ ] `Cargo.toml` 版本与 `CHANGELOG.md` 一致；
-- [ ] 格式、测试、Clippy 和 release build 全部通过；
-- [ ] `batch-git --help` 与用户手册一致；
-- [ ] `workspace.toml` 示例可被当前 schema 读取；
-- [ ] macOS/Linux/Windows schedule 限制写明；
-- [ ] 没有在文档中把 `bit` 描述为自动安装的命令；
-- [ ] 已知限制已记录；
-- [ ] 发布产物执行 `batch-git --version` 正确。
-- [ ] 发布产物动态依赖不包含构建机私有或包管理器绝对路径。
-- [ ] `cargo deny check advisories bans licenses sources` 通过；
-- [ ] CI 的 Linux、macOS、Windows release 构建均通过；
-- [ ] tag、GitHub Release、二进制名与 SHA-256 校验和相互对应；
-- [ ] `gh attestation verify <archive> --repo livenv/batch-git` 能验证发布归档；
-- [ ] `sh -n install.sh`、PowerShell parser 和四种补全文件检查通过；
-- [ ] `SECURITY.md`、`COMPATIBILITY.md` 和 automation contracts 仍与行为一致。
+- [ ] The version in `Cargo.toml` matches `CHANGELOG.md`.
+- [ ] Formatting, tests, Clippy, and the release build pass.
+- [ ] `batch-git --help` matches the user guide.
+- [ ] The `workspace.toml` example is accepted by the current schema.
+- [ ] macOS/Linux/Windows schedule constraints are documented.
+- [ ] Documentation does not describe `bit` as an automatically installed command.
+- [ ] Known limitations are recorded.
+- [ ] The release artifact reports the correct `batch-git --version`.
+- [ ] Dynamic dependencies contain no private build-host or package-manager absolute paths.
+- [ ] `cargo deny check advisories bans licenses sources` passes.
+- [ ] Linux, macOS, and Windows release builds pass in CI.
+- [ ] The tag, GitHub Release, binary names, and SHA-256 checksums agree.
+- [ ] `gh attestation verify <archive> --repo livenv/batch-git` verifies the release archive.
+- [ ] `sh -n install.sh`, the PowerShell parser, and all four completion checks pass.
+- [ ] English and Simplified Chinese documentation links are valid and translations are synchronized.
+- [ ] `SECURITY.md`, `COMPATIBILITY.md`, and the automation contracts still match behavior.
 
-## 5. 构建和安装脚本
+## 5. Build and installation scripts
 
 ```sh
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
 
-脚本执行 release 构建，按需创建安装目录，并以可执行权限安装为
-`$BATCH_GIT_INSTALL_PATH/batch-git`。未设置安装目录或目标存在但不是目录时会失败。
+The script performs a release build, creates the installation directory when necessary, and
+installs the executable as `$BATCH_GIT_INSTALL_PATH/batch-git`. It fails when the installation path
+is unset or exists but is not a directory.
 
-`install.sh` / `install.ps1` 面向已发布的预编译归档：必须显式指定 tag，下载归档及其同名
-`.sha256`，在用户可写前缀中安装二进制和补全，不会请求管理员权限。release workflow 将
-`LICENSE`、`README.md` 与 `completions/` 一并打包，并对最终归档签发 provenance；安装器本身
-只负责 SHA-256，强 provenance 验证由用户或 CI 通过 GitHub CLI单独执行。
+`install.sh` and `install.ps1` install published prebuilt archives. They require an explicit tag,
+download the archive and matching `.sha256`, install the binary and completions into a user-writable
+prefix, and never request administrator privileges. The release workflow packages `LICENSE`,
+`README.md`, `README.zh-CN.md`, and `completions/` and attests the final archive. The installers verify SHA-256 only;
+users or CI perform stronger provenance verification separately with GitHub CLI.

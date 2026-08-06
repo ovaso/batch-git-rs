@@ -1,19 +1,19 @@
-name: Feature request
-description: Propose a safe, cross-platform workflow improvement
+name: Feature request / 功能建议
+description: Propose a safe, cross-platform workflow improvement / 提议安全、跨平台的工作流改进
 title: "feature: "
 labels: [enhancement]
 body:
   - type: textarea
     id: workflow
     attributes:
-      label: User workflow
-      description: Explain the current limitation and desired outcome.
+      label: User workflow / 用户工作流
+      description: Explain the current limitation and desired outcome. / 说明当前限制和期望结果。
     validations:
       required: true
   - type: textarea
     id: safety
     attributes:
-      label: Safety and platform impact
-      description: Describe Git side effects, workspace/schema impact, and macOS/Linux/Windows considerations.
+      label: Safety and platform impact / 安全与平台影响
+      description: Describe Git side effects, workspace/schema impact, and macOS/Linux/Windows considerations. / 说明 Git 副作用、workspace/schema 影响以及 macOS/Linux/Windows 差异。
     validations:
       required: true

@@ -1,9 +1,12 @@
-# 架构说明
+# Architecture
 
-## 目标与边界
+[简体中文](zh-CN/ARCHITECTURE.md)
 
-`batch-git` 协调多个独立 Git 工作树，而不是创建新的 monorepo。`workspace.toml` 保存可复制
-的恢复声明；当前分支、HEAD、工作树变更和远端引用始终从本地 Git 仓库实时读取。
+## Goals and boundaries
+
+`batch-git` coordinates multiple independent Git working trees; it does not create a monorepo.
+`workspace.toml` stores portable restoration declarations. Current branches, HEAD, working-tree
+changes, and remote references are always read live from local Git repositories.
 
 ```text
 CLI / env ──> cli + settings + automation ──> commands / schedule
@@ -17,96 +20,97 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
                                       report + table + color
 ```
 
-## 模块职责
+## Module responsibilities
 
-- `cli` 通过 facade 保持 `crate::cli::*` 稳定；`invocation` 在显式 `--` 处分离原生 Git 透传，
-  `command` 定义 clap 顶层命令面，`args` 按自动化、工作区、同步、分支、查询、执行和 schedule
-  领域保存参数模型。
-- `automation` facade 保持协议调用路径稳定；`options` 负责输出格式、request ID、timeout 与
-  plan/apply 选项校验，`output` 只负责 v1 JSON envelope、JSONL 生命周期和 workspace revision
-  上下文序列化，`error` 集中稳定错误分类与 URL user-info 脱敏。
-- `settings` 统一处理 CLI、环境变量和默认值的优先级；`env list` 复用同一解析路径展示最终生效值，
-  不维护第二份运行配置。
-- `commands` 只在 `mod.rs` 保留顶层分派、plan/apply revision 校验、统一子进程策略与批量进度；
-  `plan`、`automation_commands`、`remote`、`changes`、`branches` 和 `exec` 分别承载对应领域工作流。
-  `workspace_commands` 再按 clone、scan、restore、manifest membership 与共享路径/命名不变量拆分；
-  `inspect` 只作为 facade，list、status、find、info、branch 各自维护查询数据模型和失败语义。
-  单仓库失败应转为可聚合结果，不能取消其他仓库。
-- `workspace` 负责根目录发现、排他锁和 `workspace.toml` 原子替换。
-- `model` 定义 schema version 1、跨字段校验和可序列化模型。
-- `git` facade 保持调用路径稳定；`types` 是值对象，`execution` 统一系统 Git 环境隔离、交互和
-  timeout，`clone`、`checkout`、`inspect`、`remotes`、`discovery` 分别承担克隆、分支切换、
-  只读事实、远端配置和工作树发现。add/commit/unstage、merge/pull/push 等仍由命令层通过统一
-  执行策略调用系统 Git。
-- `schedule` 的 `commands` facade 使用一次调用一个轻量 `CommandContext`，统一并发、输出和 revision
-  策略；其下 `declarations`、`execution`、`query`、`native`、`support` 分别处理清单声明、计划/运行、
-  只读查询、本机任务生命周期和纯查找/显示规则。`artifact` 明确生成 launchd、systemd user timer
-  与 Windows Task Scheduler 定义，`registration` 隔离原生系统调用，`state` 维护并校验本地注册
-  摘要；任何系统路径都不写入共享清单。
-- `parallel` 保证并发上限和输入顺序收集；`report` 由 `result`、`jsonl`、`machine`、`text` 和
-  `child_output` 分离业务结果、生命周期、协议序列化、文本摘要和子进程输出块；`table` 负责稳定
-  对齐。
+- The `cli` facade keeps `crate::cli::*` stable. `invocation` separates native Git passthrough at an explicit `--`; `command` defines the clap top-level surface; `args` stores argument models by automation, workspace, synchronization, branch, inspection, execution, and schedule domains.
+- The `automation` facade keeps protocol call paths stable. `options` validates output format, request ID, timeout, and plan/apply options. `output` only serializes v1 JSON envelopes, JSONL lifecycles, and workspace revision context. `error` centralizes stable error classification and URL user-info sanitization.
+- `settings` resolves CLI, environment, and default-value precedence. `env list` reuses that path to show effective values instead of maintaining a second runtime configuration.
+- `commands/mod.rs` retains only top-level dispatch, plan/apply revision verification, shared child-process policy, and batch progress. `plan`, `automation_commands`, `remote`, `changes`, `branches`, and `exec` own their respective workflows. `workspace_commands` is split further into clone, scan, restore, manifest membership, and shared path/naming invariants. `inspect` is a facade; list, status, find, info, and branch own their query models and failure semantics. A single-repository failure becomes an aggregate result and must not cancel other repositories.
+- `workspace` discovers roots, owns exclusive locking, and atomically replaces `workspace.toml`.
+- `model` defines schema version 1, cross-field validation, and serializable models.
+- The `git` facade keeps call paths stable. `types` contains value objects; `execution` centralizes system Git environment isolation, interaction, and timeouts; `clone`, `checkout`, `inspect`, `remotes`, and `discovery` own cloning, branch switching, read-only facts, remote configuration, and working-tree discovery. The command layer still invokes system Git for add/commit/unstage, merge/pull/push, and similar operations through the shared execution policy.
+- The `schedule::commands` facade creates one lightweight `CommandContext` per invocation and centralizes concurrency, output, and revision policy. `declarations`, `execution`, `query`, `native`, and `support` handle manifest declarations, planning/running, read-only queries, native task lifecycle, and pure lookup/rendering rules. `artifact` explicitly generates launchd, systemd user-timer, and Windows Task Scheduler definitions. `registration` isolates native system calls, while `state` stores and validates local registration summaries. Host paths never enter the shared manifest.
+- `parallel` enforces concurrency limits and input-order collection. `report` separates business results, lifecycle events, protocol serialization, text summaries, and child-output blocks into `result`, `jsonl`, `machine`, `text`, and `child_output`. `table` provides stable alignment.
 
-默认 Cargo feature `schedule` 编译完整调度命令和原生集成；关闭默认 features 时，CLI 和
-`capabilities.commands` 同时移除 schedule，但 `model` 仍解析并保留清单中的 schedule 声明。
-launchd、systemd 和 Windows artifact 均保留跨平台生成能力，只有真实宿主系统差异使用
-`target_os` 条件编译。
+The default Cargo feature, `schedule`, compiles the complete schedule command and native
+integration. Without default features, both the CLI and `capabilities.commands` omit schedule, but
+`model` still parses and preserves schedule declarations. launchd, systemd, and Windows artifacts
+remain cross-platform generation targets; only real host operations use `target_os` conditional
+compilation.
 
-`cli::metadata` 是规范命令名、兼容别名、可写性、全局 plan 支持和 capabilities 暴露的编译期
-事实来源；`Command::kind()`、dispatch 和 plan 保持穷尽 match，使新增枚举变体时由编译器强制
-补齐处理分支，而不引入动态注册表。
+`cli::metadata` is the compile-time source of truth for canonical command names, compatibility
+aliases, mutability, global plan support, and capabilities exposure. `Command::kind()`, dispatch,
+and plan remain exhaustive matches, so adding an enum variant forces the compiler to identify
+missing handling without introducing a dynamic registry.
 
-`--output json` 的输出边界在 `automation`：成功调用只能产生一个 receipt，错误也由库入口
-转换为结构化 document。`report` 将批量 `RepositoryResult` 映射为稳定的 per-repository
-records，且不把子 Git stdout/stderr 放入协议。`--output jsonl` 在相同数据模型之上输出
-生命周期和仓库终态事件；`clone` 将其单个受控 Git 操作也建模为一个仓库事件，避免为单仓库
-操作提供不同的进度协议。
-顶层 `error.code` 只从错误链中的类型化分类读取，`anyhow` 继续承载上下文；自然语言变化或底层
-输出中偶然出现 `lock`、`schedule`、`timeout` 等词不会改变机器分类。
+The `--output json` boundary lives in `automation`: a successful invocation emits one receipt, and
+the library entry point converts errors into structured documents. `report` maps batch
+`RepositoryResult` values into stable per-repository records without placing child Git stdout/stderr
+in the protocol. `--output jsonl` emits lifecycle and repository-terminal events from the same data
+model. `clone` models its single managed Git operation as one repository event instead of defining a
+separate progress protocol.
 
-## 一致性与副作用
+Top-level `error.code` is read only from typed classifications in the error chain; `anyhow` continues
+to carry context. Natural-language changes or incidental words such as `lock`, `schedule`, or
+`timeout` in lower-level output cannot change the machine classification.
 
-所有可能执行 Git 或写入清单的工作流都使用工作区 `.workspace.lock`。清单写入先写同目录临时
-文件，再同步并原子替换。批量命令不是跨仓库事务：每个仓库独立完成或失败，最终报告必须保留
-success、skipped 与 failed 的差别。
+## Consistency and side effects
 
-`sync` 是无人值守默认操作：恢复缺失仓库并 fetch/prune，不修改已存在的工作树。`pull` 固定为
-fast-forward-only。`add` 只暂存全部非忽略的新增、修改和删除，并在未解决冲突时拒绝；`commit`
-只提交既有 index，拒绝 detached HEAD 和正在进行的 Git operation，不提供 implicit add、amend、
-空提交或 hook bypass；`unstage` 全量恢复 index 且不改工作树，unborn HEAD 使用
-`git read-tree --empty`。重写历史、清理工作树或强制推送仍不是内建自动化能力。
+Every workflow that may run Git or write the manifest uses the workspace `.workspace.lock`.
+Manifest writes go to a same-directory temporary file, are synchronized, and then atomically
+replace the destination. Batch commands are not transactions across repositories: each repository
+completes or fails independently, and the final report preserves the distinction between success,
+skipped, and failed.
 
-`merge` 默认只使用现有本地引用。显式 `--update-current` / `--uc` 会先对有 upstream 的当前目标分支执行
-fast-forward-only pull；没有 upstream 的仅本地分支会跳过此步骤。显式 `--refresh-source` / `--rs` 会 fetch 声明远端并合并最新的
-remote-tracking 来源分支，而不移动本地来源分支。两者都可能修改工作树，冲突一律保留给用户处理，
-不自动 abort、continue、rebase 或回滚。
-`merge --default` 默认启用来源刷新，可由 `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 关闭；
-`merge --feature` 默认不更新当前目标分支，可由 `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` 开启。
-这两个按来源类型的默认值只在相应模式生效，显式 CLI 选项始终优先。
+`sync` is the unattended default: it restores missing repositories and fetches/prunes remote
+references without changing existing working trees. `pull` is always fast-forward-only. `add`
+stages all non-ignored additions, modifications, and deletions and rejects unresolved conflicts.
+`commit` commits the existing index only, rejects detached HEAD and in-progress Git operations, and
+does not provide implicit add, amend, empty commits, or hook bypass. `unstage` resets the entire index
+without changing the working tree; an unborn HEAD uses `git read-tree --empty`. History rewriting,
+working-tree cleanup, and force-push remain outside the built-in automation surface.
 
-commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产生 batch-git 无法分类的本地或外部
-副作用。系统 Git 的单仓库 index/ref lock 与工作区锁共同降低并发冲突，但外部原生 Git 不遵循
-`.workspace.lock`。批量命令不是事务：某些仓库已创建提交后，后续仓库失败或超时不会触发自动
-reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、filter 或签名后代仍可能存活，
-调用方必须重新检查 HEAD、index 和工作树。
+`merge` uses existing local references by default. Explicit `--update-current` / `--uc` first runs a
+fast-forward-only pull when the current target branch has an upstream; local-only branches skip that
+step. Explicit `--refresh-source` / `--rs` fetches declared remotes and merges the newest
+remote-tracking source without moving the local source branch. Both can modify the working tree.
+Conflicts are left for the user: batch-git never aborts, continues, rebases, or rolls back
+automatically.
 
-计划不是事务：`--plan` 只读取本地状态并返回 `workspace.toml` digest；`--apply` 在持锁后
-重新核对该 digest，然后才执行可写命令。add/commit/unstage plan 还公开固定的 index 范围、
-提交消息或工作树保留属性，但不会冻结 HEAD、index 或工作树。它不保存额外账本、不会锁住远端，
-也不承诺跨仓库回滚。
-系统 Git 由 `GitExecutionOptions` 统一控制 stdin、`GIT_TERMINAL_PROMPT` 和单子进程 timeout；
-机器输出强制非交互，以免子进程流污染 JSON。捕获线程始终排空 stdout/stderr，但每个流只保留
-1 MiB 的头尾诊断窗口，避免并发 `log`、`diff` 或错误输出导致无界内存增长。
+`merge --default` enables source refresh by default and can be disabled with
+`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE`. `merge --feature` does not update the current target by
+default and can be enabled with `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT`. These source-specific
+defaults apply only to their respective modes; explicit CLI options always win.
 
-清单目录先经过词法相对路径校验，再由 `workspace::repository_path` 解析真实文件系统边界。
-已存在路径和最近存在祖先都必须 canonicalize 到工作区根内；工作区内 symlink 可用，指向外部的
-仓库或待创建子目录会在读取清单和每次仓库操作前被拒绝。
+Commit obeys repository hooks, identity, and signing configuration, which may have local or external
+side effects that batch-git cannot classify. Per-repository Git index/ref locks and the workspace
+lock reduce concurrency conflicts, but native Git invoked outside batch-git does not honor
+`.workspace.lock`. Batch commands are non-transactional: if later repositories fail or time out,
+commits already created in earlier repositories are not reset, amended, rebased, or otherwise rolled
+back. After the direct Git child times out, hook, filter, signing, authentication, or transport
+descendants may still be alive; callers must recheck HEAD, the index, and the working tree.
 
-## 演进规则
+A plan is not a transaction. `--plan` reads local state and returns the `workspace.toml` digest;
+`--apply` rechecks that digest after acquiring the lock and only then runs the write operation.
+Add/commit/unstage plans also expose fixed index scope, commit message, or working-tree preservation
+properties, but they do not freeze HEAD, the index, or the working tree. No additional ledger is
+stored, remote state is not locked, and cross-repository rollback is not promised.
 
-- `workspace.toml` 的 schema 由 `version` 保护；任何破坏性格式调整必须引入迁移和新的主版本。
-- v1 JSON / JSONL 输出和公开 schema 是 automation contract；仅新增可选字段可在同主版本内发布。
-- 新的 scheduler 平台应实现生成、验证、注册、状态和安全反注册，并在目标平台 CI 测试。
-- 新命令必须定义选择器、并发、退出码、部分失败和文档行为，不能只提供 happy path。
-- 命令帮助与元数据的后续整理按 [命令组织计划](COMMAND_ORGANIZATION_PLAN.md) 演进；在该计划
-  明确进入实施阶段前，不引入嵌套命令路径，也不改变现有命令字符串。
+System Git uses `GitExecutionOptions` to centralize stdin, `GIT_TERMINAL_PROMPT`, and per-child
+timeouts. Machine output forces non-interactive execution so child streams cannot corrupt JSON.
+Reader threads always drain stdout/stderr, but retain only a 1 MiB head/tail diagnostic window per
+stream to prevent concurrent `log`, `diff`, or error output from causing unbounded memory growth.
+
+Manifest directories first pass lexical relative-path validation and then
+`workspace::repository_path` filesystem-boundary resolution. Existing paths and the nearest existing
+ancestor must canonicalize inside the workspace root. Symlinks that remain inside the workspace are
+allowed; repositories or prospective child paths that resolve outside it are rejected when the
+manifest is read and before each repository operation.
+
+## Evolution rules
+
+- `workspace.toml` schema changes are guarded by `version`; breaking format changes require a migration and a new major version.
+- v1 JSON/JSONL output and public schemas are automation contracts. Only new optional fields may ship within the same major version.
+- A new scheduler platform must implement generation, validation, registration, status, and safe unregistration, with CI coverage on the target platform.
+- New commands must define selector, concurrency, exit-code, partial-failure, and documentation behavior, not only a happy path.
+- Future help and metadata work follows the [command organization plan](COMMAND_ORGANIZATION_PLAN.md). Do not introduce nested command paths or change existing command strings until that plan explicitly enters implementation.

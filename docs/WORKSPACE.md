@@ -1,12 +1,15 @@
-# workspace.toml 与运行时配置
+# workspace.toml and Runtime Configuration
 
-## 1. 清单定位
+[简体中文](zh-CN/WORKSPACE.md)
 
-`workspace.toml` 是工作区的声明式事实载体。普通命令从当前目录向上查找最近的
-清单；`BATCH_GIT_WORKSPACE` 可以指定绝对工作区路径。`scan` 和 `restore` 始终以
-当前目录为根目录，避免误修改父目录工作区。
+## 1. Manifest discovery
 
-## 2. 完整示例
+`workspace.toml` is the declarative source of truth for a workspace. Normal commands search upward
+from the current directory for the nearest manifest. `BATCH_GIT_WORKSPACE` can name an absolute
+workspace path. `scan` and `restore` always use the current directory as their root to avoid
+modifying a parent workspace accidentally.
+
+## 2. Complete example
 
 ```toml
 version = 1
@@ -37,54 +40,58 @@ overlap = "skip"
 all = true
 ```
 
-## 3. 仓库字段
+## 3. Repository fields
 
-| 字段 | 必需 | 说明 |
+| Field | Required | Description |
 |---|---|---|
-| `name` | 是 | 工作区内唯一的仓库名称 |
-| `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..`；真实路径也不得经 symlink 解析到工作区外 |
-| `default_branch` | 是 | `checkout --default` 的目标分支，也是 `merge --default` 的源分支 |
-| `primary_remote` | 是 | 主远端名称，必须存在于 `remotes` 中；缺省按 `origin` 读取 |
-| `created_at` | 是 | RFC 3339 时间 |
-| `synced_at` | 否 | 最近一次成功同步时间 |
-| `remotes` | 是 | 至少一个命名远端 |
-| `fetch_url` | 是 | fetch URL |
-| `push_url` | 否 | 独立 push URL；省略或等于 `fetch_url` 时清除仓库中的独立 push URL |
+| `name` | Yes | Repository name, unique within the workspace. |
+| `directory` | Yes | Unique workspace-relative directory. Absolute paths, `.` and `..` are forbidden, and the real path must not resolve outside the workspace through a symlink. |
+| `default_branch` | Yes | Target of `checkout --default` and source branch for `merge --default`. |
+| `primary_remote` | Yes | Primary remote name; must exist in `remotes`. Discovery defaults to `origin`. |
+| `created_at` | Yes | RFC 3339 timestamp. |
+| `synced_at` | No | Most recent successful synchronization time. |
+| `remotes` | Yes | At least one named remote. |
+| `fetch_url` | Yes | Fetch URL. |
+| `push_url` | No | Separate push URL. Omitting it, or setting it equal to `fetch_url`, clears a separate push URL in the repository. |
 
-清单不保存当前分支、所有本地/远端分支、HEAD、tag 或工作树修改。这些动态数据
-始终以仓库 `.git` 为准。
+The manifest does not store the current branch, every local/remote branch, HEAD, tags, or working-tree
+changes. Those dynamic facts always come from each repository's `.git` data.
 
-## 4. 写入与安全边界
+## 4. Writes and safety boundaries
 
-- 当前 schema 版本固定为 `1`；
-- 名称和目录必须唯一；
-- 时间必须是合法 RFC 3339；
-- HTTP(S) URL 中的用户信息在写入前移除；
-- 写入采用同目录临时文件、同步和原子替换；
-- 会执行 Git 或修改清单的进程使用 `.workspace.lock`；
-- 程序会规范化 TOML 格式，不保证保留手写注释和原始排版。
+- The current schema version is fixed at `1`.
+- Names and directories must be unique.
+- Timestamps must be valid RFC 3339.
+- User information is removed from HTTP(S) URLs before writing.
+- Writes use a same-directory temporary file, synchronization, and atomic replacement.
+- Processes that run Git or modify the manifest use `.workspace.lock`.
+- The program normalizes TOML formatting and does not promise to preserve hand-written comments or original layout.
 
-`schedules` 可以整体省略，等同于空列表。手写 schedule 时也可省略有默认值的 `enabled`、
-`action`、`timezone` 和 `overlap`；`schema workspace` 输出的 schema 对应这种输入形式，而不是要求
-写入程序序列化时会补齐的默认字段。
+The entire `schedules` collection may be omitted, which is equivalent to an empty list. Hand-written
+schedules may also omit `enabled`, `action`, `timezone`, and `overlap` because they have defaults.
+The schema returned by `schema workspace` describes this input form rather than requiring the
+defaulted fields emitted by the serializer.
 
-当使用 `batch-git --output json --plan …` 时，receipt 中的 `workspace.revision` 是当前
-`workspace.toml` 原始字节的 `sha256:<hex>` 摘要。将它只作为紧随其后的
-`--apply --expect-workspace-revision` 前置条件，不要写回清单或把它当作 schema 字段。apply
-会在持锁后重新计算摘要；注释或空白的任何改动也会使该摘要失效。
+For `batch-git --output json --plan …`, the receipt's `workspace.revision` is a `sha256:<hex>` digest
+of the exact `workspace.toml` bytes. Use it only as the precondition for the immediately following
+`--apply --expect-workspace-revision`; do not write it into the manifest or treat it as a schema
+field. Apply recomputes the digest after acquiring the lock. Any comment or whitespace change also
+invalidates the digest.
 
-因此，注释不应承载业务含义。手工编辑后建议先运行只读命令校验：
+Comments therefore should not carry business meaning. After manual edits, validate with a read-only
+command:
 
 ```sh
 batch-git info
 ```
 
-## 5. 环境变量
+## 5. Environment variables
 
-配置优先级为：命令行参数 > 环境变量 > 内建默认值。非法值会报错，不会静默
-回退。
+Precedence is CLI argument > environment variable > built-in default. Invalid values fail instead of
+silently falling back.
 
-使用下面的只读命令可以直接查看支持项及本次调用的最终生效值；它不要求当前目录属于工作区：
+Use the following read-only commands to inspect supported variables and their effective values for
+the current invocation. They do not require the current directory to belong to a workspace:
 
 ```sh
 batch-git env ls
@@ -92,40 +99,40 @@ batch-git env ls -d
 batch-git --output json env list
 ```
 
-文本输出默认包含 `VARIABLE`、`DEFAULT`、`CURRENT` 三列；使用 `-d` / `--description` 时才增加
-`DESCRIPTION`。交互终端中的 `CURRENT` 使用绿色显示。最终值中的动态目录会解析为实际路径；
-未显式设置 `BATCH_GIT_WORKSPACE` 时，当前值会显示自动发现的工作区，找不到时显示
-`<not found>`。全局 `--jobs` 会覆盖 `BATCH_GIT_JOBS` 并反映在当前值中。
+Text output contains `VARIABLE`, `DEFAULT`, and `CURRENT` by default. `-d` / `--description` adds a
+`DESCRIPTION` column. `CURRENT` is green in an interactive terminal. Dynamic directories are
+resolved to real paths. Without an explicit `BATCH_GIT_WORKSPACE`, the current value shows the
+auto-discovered workspace or `<not found>`. Global `--jobs` overrides `BATCH_GIT_JOBS` and is
+reflected in the effective value.
 
-| 环境变量 | 默认值 | 说明 |
+| Environment variable | Default | Description |
 |---|---:|---|
-| `BATCH_GIT_JOBS` | `4` | 最大并发仓库数，必须大于 `0` |
-| `BATCH_GIT_SCAN_DEPTH` | `1` | `scan` 默认扫描深度，必须大于 `0` |
-| `BATCH_GIT_WORKSPACE` | 未设置 | 普通命令使用的绝对工作区路径 |
-| `BATCH_GIT_STATE_DIR` | 平台用户 state 目录 | schedule 注册状态和日志根目录 |
-| `BATCH_GIT_SCHEDULE_LOG` | `false` | 注册任务是否记录 stdout/stderr |
-| `BATCH_GIT_TZ` | 系统时区 | schedule 任务时区；设置后需重新 register，不允许空白字符 |
-| `BATCH_GIT_REMOTE` | 未设置 | 普通 checkout/merge 的远端消歧名称；`--default` 固定使用各仓库的 `primary_remote` |
-| `CURRENT_FEATURE_BRANCH` | 未设置 | `checkout --feature` / `cf` 的目标分支，以及 `merge --feature` 的源分支 |
-| `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` | `true` | `merge --default` 时是否 fetch 并合并最新 remote-tracking default 分支 |
-| `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` | `false` | `merge --feature` 时是否先 ff-only 更新当前分支 |
-| `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | 全仓库 Git 透传是否展示成功输出 |
-| `NO_COLOR` | 未设置 | 变量存在时禁用颜色 |
+| `BATCH_GIT_JOBS` | `4` | Maximum concurrent repositories; must be greater than `0`. |
+| `BATCH_GIT_SCAN_DEPTH` | `1` | Default scan depth; must be greater than `0`. |
+| `BATCH_GIT_WORKSPACE` | Unset | Absolute workspace path used by normal commands. |
+| `BATCH_GIT_STATE_DIR` | Platform user state directory | Root for schedule registration state and logs. |
+| `BATCH_GIT_SCHEDULE_LOG` | `false` | Whether registered jobs record stdout/stderr. |
+| `BATCH_GIT_TZ` | System timezone | Schedule timezone; re-register after changing it. Whitespace is forbidden. |
+| `BATCH_GIT_REMOTE` | Unset | Remote used to disambiguate ordinary checkout/merge. `--default` always uses each repository's `primary_remote`. |
+| `CURRENT_FEATURE_BRANCH` | Unset | Target for `checkout --feature` / `cf` and source for `merge --feature`. |
+| `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` | `true` | Whether `merge --default` fetches and merges the newest remote-tracking default branch. |
+| `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` | `false` | Whether `merge --feature` first fast-forwards the current branch. |
+| `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | Whether whole-workspace Git passthrough shows successful output. |
+| `NO_COLOR` | Unset | Disable color when the variable exists. |
 
-除按“是否存在”解释的 `NO_COLOR` 外，布尔变量接受 `1/0`、`true/false`、`yes/no`、
-`on/off`，不区分大小写。
+Except for `NO_COLOR`, which is interpreted by presence, Boolean variables accept `1/0`,
+`true/false`, `yes/no`, and `on/off`, case-insensitively.
 
-## 6. 本地状态文件
+## 6. Local state files
 
-`.workspace.lock` 位于工作区根目录，用于串行化可能冲突的操作。schedule 的注册
-状态和可选日志位于用户 state 目录，不写入共享清单：
+`.workspace.lock` lives in the workspace root and serializes potentially conflicting operations.
+Schedule registration state and optional logs live in the user state directory, never in the shared
+manifest:
 
-- 显式设置：`BATCH_GIT_STATE_DIR`；
-- macOS 默认：用户 Library 下的 Application Support 状态目录；
-- Windows 默认：`%LOCALAPPDATA%\batch-git`，不可用时回退到用户目录下的
-  `AppData\Local\batch-git`；
-- Linux/Unix 默认：`$XDG_STATE_HOME/batch-git`，未设置时使用
-  `$HOME/.local/state/batch-git`。
+- Explicit override: `BATCH_GIT_STATE_DIR`.
+- macOS default: the Application Support state directory under the user's Library.
+- Windows default: `%LOCALAPPDATA%\batch-git`, falling back to `AppData\Local\batch-git` under the user directory.
+- Linux/Unix default: `$XDG_STATE_HOME/batch-git`, or `$HOME/.local/state/batch-git` when unset.
 
-实际任务文件和日志路径应以 `batch-git schedule status <name>` 输出为准，不要
-在脚本中猜测平台路径。
+Use `batch-git schedule status <name>` as the source of truth for native task and log paths; do not
+guess platform paths in scripts.

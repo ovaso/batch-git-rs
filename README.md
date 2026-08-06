@@ -4,42 +4,46 @@
 [![Release](https://img.shields.io/github/v/release/livenv/batch-git)](https://github.com/livenv/batch-git/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-`batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
-`workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
+[简体中文](README.zh-CN.md)
 
-当前封版版本：`0.4.3`。
+`batch-git` is a multi-repository Git workspace manager. It uses one portable, reviewable
+`workspace.toml` manifest to manage multiple independent Git repositories; the workspace itself
+does not need to be a Git repository.
 
-## 主要能力
+Latest released version: `0.4.3`.
 
-- 扫描已有目录并生成工作区清单；
-- 从清单恢复缺失仓库，或克隆并自动登记单个仓库；
-- 批量 add、commit、unstage、fetch、fast-forward pull、push、checkout、merge 和查看状态；
-- 按仓库精确选择或按名称通配后执行原生 Git 命令；
-- 在 macOS `launchd`、Linux `systemd --user` 或 Windows Task Scheduler 中注册定时同步；
-- 有界并发、稳定输出顺序、工作区锁和聚合退出码；
-- 面向 CI 与 agent 的版本化 JSON / JSON Lines 协议、结构化错误、能力发现和 plan/apply
-  清单前置条件。
+## Highlights
 
-`batch-git commit` 只提交已经进入暂存区的内容，不会隐式 add、amend、创建空提交或绕过 hook；
-工具也不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
-clone 或 restore 失败/超时时也不会递归删除目标目录；保留的内容须由用户检查并明确处理后才能重试。
+- Scan existing directories and create a workspace manifest.
+- Restore missing repositories from the manifest, or clone and register one repository.
+- Run add, commit, unstage, fetch, fast-forward pull, push, checkout, merge, and status operations in batches.
+- Select repositories explicitly or by name pattern before running native Git commands.
+- Register scheduled synchronization with macOS `launchd`, Linux `systemd --user`, or Windows Task Scheduler.
+- Use bounded concurrency, deterministic output order, workspace locking, and aggregate exit codes.
+- Integrate with CI and agents through versioned JSON/JSON Lines protocols, structured errors, capability discovery, and manifest preconditions for plan/apply.
 
-## 安装
+`batch-git commit` commits only content that is already staged. It never performs an implicit add,
+amend, empty commit, or hook bypass. The tool also never merges, rebases, stashes, resets, or cleans
+a working tree unless explicitly requested. If clone or restore fails or times out, the destination
+is preserved for inspection and must be handled explicitly before retrying.
 
-正式 release 为 Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 提供预编译归档、
-SHA-256 校验和及 GitHub artifact attestation。安装器不会使用 `sudo`，且要求明确版本：
+## Installation
+
+Official releases provide prebuilt archives, SHA-256 checksums, and GitHub artifact attestations
+for Linux x86_64, macOS x86_64/arm64, and Windows x86_64. The installers never use `sudo` and
+require an explicit version:
 
 ```sh
-# macOS / Linux：先下载并审阅安装器，再安装到 ~/.local。
+# macOS / Linux: download and review the installer before installing to ~/.local.
 VERSION=vX.Y.Z
 curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
 sh install.sh --version "$VERSION"
 
-# 可选：安装到其他用户可写前缀。
+# Optional: install to another user-writable prefix.
 sh install.sh --version "$VERSION" --prefix "$HOME/.local"
 ```
 
-PowerShell：
+PowerShell:
 
 ```powershell
 $Version = "vX.Y.Z"
@@ -47,50 +51,54 @@ Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Versio
 .\install.ps1 -Version $Version
 ```
 
-安装器会验证与归档一同发布的 SHA-256。也可从 [GitHub Releases](https://github.com/livenv/batch-git/releases)
-手工下载并校验；如已安装 GitHub CLI，可进一步验证签名 provenance：
+The installers verify the SHA-256 file published beside each archive. You can also download and
+verify an archive manually from [GitHub Releases](https://github.com/livenv/batch-git/releases).
+If GitHub CLI is available, verify the signed provenance as well:
 
 ```sh
 gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
 ```
 
-从源码构建需要 Rust 工具链和系统 Git：
+Building from source requires a Rust toolchain and system Git:
 
 ```sh
-# crates.io 安装；也可用 cargo-binstall 读取 release 元数据安装预编译归档。
+# Install from crates.io, or let cargo-binstall use the release metadata.
 cargo install --locked batch-git
 cargo binstall batch-git
 
-# 仅构建
+# Build only.
 cargo build --release
 ./target/release/batch-git --version
 
-# 可选：构建不含 schedule 命令和原生调度器集成的精简版本
+# Optional: build without the schedule command and native scheduler integration.
 cargo build --release --no-default-features
 
-# 构建并安装到指定目录
+# Build and install to a selected directory.
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
 
-release 归档同时包含 Bash、Zsh、Fish 和 PowerShell 补全；安装器会把当前平台的补全文件复制到
-用户前缀下。若 shell 未自动发现该前缀，请按[用户手册](docs/USER_GUIDE.md#2-安装与验证)加载。
+Release archives include Bash, Zsh, Fish, and PowerShell completions. The installer copies the
+completion files for the current platform into the selected user prefix. If your shell does not
+discover that prefix automatically, follow the [user guide](docs/USER_GUIDE.md#2-installation-and-verification).
 
-默认 feature 集包含 `schedule`，因此普通构建的命令面保持完整。关闭默认 features 只影响当前
-二进制是否提供 `schedule` 命令；`workspace.toml` 仍会解析并保留既有 schedule 声明，避免精简
-构建改写清单时丢失数据。自动化应以 `capabilities.data.commands` 判断当前二进制是否支持调度。
+The default feature set includes `schedule`, so normal builds retain the complete command surface.
+Disabling default features only removes the `schedule` command and native scheduler integration
+from that binary. Existing schedule declarations are still parsed and preserved in `workspace.toml`,
+preventing a minimal build from discarding manifest data. Automation should inspect
+`capabilities.data.commands` before attempting schedule operations.
 
-确保安装目录已经加入 `PATH`：
+Make sure the installation directory is on `PATH`:
 
 ```sh
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-安装产物和正式命令名始终是 `batch-git`；`bit` 仅是用户可自行配置的 shell alias，示例见
-[用户手册](docs/USER_GUIDE.md#2-安装与验证)。
+The installed binary and official command name are always `batch-git`. `bit` is only an optional
+user-defined shell alias; see the [user guide](docs/USER_GUIDE.md#2-installation-and-verification).
 
-## 快速开始
+## Quick start
 
-从现有多仓库目录建立工作区：
+Create a workspace from an existing directory containing multiple repositories:
 
 ```sh
 cd /path/to/workspace
@@ -99,13 +107,13 @@ batch-git status
 batch-git branch
 batch-git fetch
 
-# 明确暂存、审阅并提交；省略选择器时覆盖整个工作区。
+# Stage explicitly, review, then commit. Omitting selectors targets the whole workspace.
 batch-git add --match 'service-*'
 batch-git exec --match 'service-*' -- diff --cached --stat
 batch-git commit --match 'service-*' -m 'Update generated clients'
 ```
 
-用清单恢复工作区：
+Restore a workspace from its manifest:
 
 ```sh
 mkdir restored-workspace
@@ -115,97 +123,100 @@ batch-git restore
 batch-git fetch
 ```
 
-批量执行原生 Git：
+Run native Git across repositories:
 
 ```sh
-# 所有已物化仓库
+# Every materialized repository.
 batch-git -- status --short
 
-# 指定仓库
+# Selected repositories.
 batch-git exec service-api service-web -- log -1 --oneline
 
-# 按仓库名匹配
+# Repositories matched by name.
 batch-git exec --match 'service-*' -- fetch --prune
 ```
 
-命令边界是明确的：
+The command boundary is explicit:
 
 ```text
-batch-git <command> [options]       # batch-git 内建命令
-batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
+batch-git <command> [options]       # built-in batch-git command
+batch-git -- <git-args...>          # pass arguments unchanged to Git in every repository
 ```
 
-未知内建命令会报错，不会自动解释为 Git 命令。例如 `batch-git branch` 显示
-工作区分支摘要，`batch-git -- branch` 才会在每个仓库执行 `git branch`。
+Unknown built-in commands fail instead of being interpreted as Git commands. For example,
+`batch-git branch` displays a workspace branch summary, while `batch-git -- branch` runs
+`git branch` in every repository.
 
-## 常用命令
+## Common commands
 
-| 场景 | 命令 |
+| Workflow | Command |
 |---|---|
-| 创建或补充清单 | `batch-git scan` |
-| 查看工作区状态 | `batch-git status` |
-| 查看当前分支 | `batch-git branch` |
-| 查看支持的环境变量与生效值 | `batch-git env ls` |
-| 暂存全部非忽略变更 | `batch-git add [repositories]` |
-| 提交已暂存内容 | `batch-git commit [repositories] -m <message>` |
-| 撤销全部暂存并保留工作树 | `batch-git unstage [repositories]` |
-| 安全更新远端引用 | `batch-git fetch` 或 `batch-git sync` |
-| fast-forward 更新当前分支 | `batch-git pull` |
-| 推送当前 tracking 分支 | `batch-git push` |
-| 切换同名分支 | `batch-git checkout <branch>` |
-| 切换各仓库默认分支 | `batch-git cd` |
-| 将各仓库默认分支合入当前分支 | `batch-git merge --default` |
-| 搜索本地或远端分支 | `batch-git find 'feature/*'` |
-| 查看工作区或仓库详情 | `batch-git info [repository]` |
-| 管理定时任务 | `batch-git schedule --help` |
+| Create or extend the manifest | `batch-git scan` |
+| Inspect workspace status | `batch-git status` |
+| Show current branches | `batch-git branch` |
+| Show supported environment variables and effective values | `batch-git env ls` |
+| Stage all non-ignored changes | `batch-git add [repositories]` |
+| Commit staged content | `batch-git commit [repositories] -m <message>` |
+| Unstage everything while preserving working trees | `batch-git unstage [repositories]` |
+| Safely update remote references | `batch-git fetch` or `batch-git sync` |
+| Fast-forward the current branch | `batch-git pull` |
+| Push the current tracking branch | `batch-git push` |
+| Check out the same branch | `batch-git checkout <branch>` |
+| Check out each repository's default branch | `batch-git cd` |
+| Merge each repository's default branch into the current branch | `batch-git merge --default` |
+| Search local or remote branches | `batch-git find 'feature/*'` |
+| Show workspace or repository details | `batch-git info [repository]` |
+| Manage scheduled jobs | `batch-git schedule --help` |
 
-完整参数以 `batch-git --help` 和各子命令的 `--help` 为准。
+Use `batch-git --help` and each subcommand's `--help` output as the complete parameter reference.
 
-## 自动化与 agent
+## Automation and agents
 
-新自动化优先使用全局 `--output json`，而不是解析表格或旧的子命令 `--json`：
+New automation should use global `--output json` instead of parsing tables or legacy subcommand
+`--json` output:
 
 ```sh
-# 先发现当前二进制的能力，再读取稳定 receipt。
+# Discover the current binary's capabilities before consuming stable receipts.
 batch-git --output json capabilities
 batch-git --output json --request-id ci-184 status
 
-# 预览批量同步；apply 会重新核对 plan 返回的 workspace revision。
+# Preview a batch sync; apply rechecks the workspace revision returned by the plan.
 batch-git --output json --plan sync --match 'service-*'
 batch-git --output json --apply --expect-workspace-revision 'sha256:…' \
   sync --match 'service-*'
 ```
 
-长任务可使用 `--output jsonl` 逐行消费 `started`、`repository_finished` 和 `finished`
-事件；单仓库 `clone` 也会按此顺序发出一个仓库终态事件。仓库事件保持清单顺序，已先完成的
-后序仓库可能等待前序事件。`--non-interactive` 禁止 Git 提示，`--timeout 5m` 只限制直接启动的
-Git 子进程，不能保证终止其认证或传输后代进程。
-`schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 表示，清单中可省略有默认值的字段。完整字段、
-兼容策略和安全边界见[自动化契约](docs/AUTOMATION_CONTRACTS.md)；仓库内 skill 提供 agent
-的默认操作流程。
+For long-running operations, `--output jsonl` emits `started`, `repository_finished`, and `finished`
+events one line at a time. A single-repository clone uses the same lifecycle. Repository events stay
+in manifest order, so a later repository that finishes first may wait for earlier events.
+`--non-interactive` disables Git prompts. `--timeout 5m` limits only the directly launched Git child
+process and cannot guarantee termination of authentication or transport descendants.
 
-## 文档
+The schema returned by `schema workspace` describes the JSON representation of `workspace.toml`;
+fields with defaults may be omitted from the manifest. See the
+[automation contracts](docs/AUTOMATION_CONTRACTS.md) for complete fields, compatibility rules, and
+safety boundaries. The repository-local skill provides the default workflow for agents.
 
-- [用户手册](docs/USER_GUIDE.md)：安装、工作流、命令说明和故障排查；
-- [工作区清单](docs/WORKSPACE.md)：`workspace.toml` 格式、环境变量和状态目录；
-- [定时任务](docs/SCHEDULES.md)：声明、验证、注册、日志和平台差异；
-- [开发与发布](docs/DEVELOPMENT.md)：验证命令、实现边界和封版检查；
-- [架构说明](docs/ARCHITECTURE.md)：模块职责、并发、锁与 Git 执行边界；
-- [兼容性](docs/COMPATIBILITY.md)：Rust、Git、平台与调度器支持矩阵；
-- [自动化契约](docs/AUTOMATION_CONTRACTS.md)：面向 CI 和 agent 的版本化 JSON、JSONL、
-  plan/apply、schema 与退出码约定；
-- [变更记录](CHANGELOG.md)：版本级交付内容和已知限制。
+## Documentation
 
-根目录中的 `Request.md`、`OPTIMISE.md` 和 `SUGGESTIONS.md` 是设计过程归档，
-不作为当前行为说明。正式行为以命令帮助、上述手册和当前代码为准。
+- [User guide](docs/USER_GUIDE.md): installation, workflows, commands, and troubleshooting.
+- [Workspace manifest](docs/WORKSPACE.md): `workspace.toml`, environment variables, and state directories.
+- [Schedules](docs/SCHEDULES.md): declarations, validation, registration, logs, and platform differences.
+- [Development and release](docs/DEVELOPMENT.md): validation commands, implementation boundaries, and release checks.
+- [Architecture](docs/ARCHITECTURE.md): module responsibilities, concurrency, locking, and Git execution boundaries.
+- [Compatibility](docs/COMPATIBILITY.md): Rust, Git, platform, and scheduler support matrix.
+- [Automation contracts](docs/AUTOMATION_CONTRACTS.md): versioned JSON/JSONL, plan/apply, schemas, and exit codes for CI and agents.
+- [Changelog](CHANGELOG.md): release-level changes and known limitations.
 
-## 退出码
+The authoritative behavior is defined by command help, these guides, and the current code.
 
-- `0`：命令完成；允许预期内的 skip，例如无内容可暂存、提交或撤销暂存；
-- `1`：至少一个仓库操作失败；
-- `2`：参数、环境变量、工作区、清单校验或文件写入错误。
+## Exit codes
 
-## 开发验证
+- `0`: the command completed; expected skips such as nothing to stage, commit, or unstage are allowed.
+- `1`: at least one repository operation failed.
+- `2`: argument, environment, workspace, manifest-validation, or file-write error.
+
+## Development checks
 
 ```sh
 cargo fmt -- --check
@@ -214,12 +225,13 @@ cargo test --locked
 cargo build --locked --release
 ```
 
-## 参与项目
+## Contributing
 
-提交变更前请阅读 [贡献指南](CONTRIBUTING.md)、[安全政策](SECURITY.md) 和
-[agent 协作约定](AGENTS.md)。对 multi-repository Git 操作进行自动化时，可使用仓库内
-未安装的 [batch-git automation skill](skills/batch-git-automation/SKILL.md)。
+Before contributing, read the [contributing guide](CONTRIBUTING.md), [security policy](SECURITY.md),
+and [agent collaboration guidelines](AGENTS.md). Automation for multi-repository Git operations can
+use the repository-local, uninstalled
+[batch-git automation skill](skills/batch-git-automation/SKILL.md).
 
-## 许可证
+## License
 
-本项目使用 [MIT License](LICENSE)。
+This project is licensed under the [MIT License](LICENSE).

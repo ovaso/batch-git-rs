@@ -23,7 +23,9 @@ use std::ffi::OsString;
 use clap::Parser;
 use error::{ClassifyResult, ErrorCode, classified};
 
-/// 执行一次完整的命令行调用，并把顶层错误统一转换为退出码 `2`。
+/// Run one complete CLI invocation and normalize top-level failures to exit code `2`.
+///
+/// 中文：执行一次完整的命令行调用，并把顶层错误统一转换为退出码 `2`。
 pub fn run(args: Vec<OsString>) -> i32 {
     let fallback = cli::preflight_options(&args);
     let command = cli::preflight_command(&args);
