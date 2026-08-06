@@ -242,9 +242,11 @@ batch-git merge --update-current feature/login
 batch-git merge --no-update-current feature/login
 ```
 
-`merge` 将源分支合并到各仓库的当前分支。默认不联网；`--update-current` 会先对
-当前 tracking 分支执行 fast-forward-only pull，但不会更新源分支。发生冲突时程序不会自动
-`git merge --abort`，应进入对应仓库检查并人工处理。`merge --feature` 使用
+`merge` 将源分支合并到各仓库的当前分支。默认不联网；如果本地 tracking ref 显示当前分支
+落后或已分叉，默认模式会在启动 Git merge 前失败，避免留下进行中的合并；先执行 `batch-git
+fetch` 以刷新该判断，再执行 `batch-git pull`，或显式使用 `--update-current`。后者会先对当前
+tracking 分支执行 fast-forward-only pull，但不会更新源分支。发生冲突时程序不会自动 `git merge
+--abort`，应进入对应仓库检查并人工处理。`merge --feature` 使用
 `CURRENT_FEATURE_BRANCH` 作为源分支，无需再传分支名。
 
 `merge --default` 分别读取每个仓库在 `workspace.toml` 中声明的 `default_branch`，将其合入

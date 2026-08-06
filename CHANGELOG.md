@@ -5,6 +5,13 @@
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-06
+
+### Fixed
+
+- `merge` 在未要求 `--update-current` 时，会先拒绝本地 tracking ref 已显示为落后或分叉的当前
+  分支，避免对过期目标分支启动 Git merge 并遗留阻塞后续 `pull` 的进行中合并状态。
+
 ## [0.4.0] - 2026-08-04
 
 ### Added
@@ -159,7 +166,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/livenv/batch-git/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/livenv/batch-git/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/livenv/batch-git/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/livenv/batch-git/compare/v0.1.1...v0.2.0

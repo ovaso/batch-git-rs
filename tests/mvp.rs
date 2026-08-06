@@ -601,6 +601,64 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
 }
 
 #[test]
+fn merge_rejects_an_outdated_current_branch_without_starting_a_merge() {
+    let fixture = Fixture::new("service-merge-outdated");
+    let workspace = tempfile::tempdir().unwrap();
+    git(
+        workspace.path(),
+        [
+            "clone",
+            fixture.remote.to_str().unwrap(),
+            "service-merge-outdated",
+        ],
+    );
+    batch_git(workspace.path())
+        .args(["scan"])
+        .assert()
+        .success();
+
+    let updater = tempfile::tempdir().unwrap();
+    git(
+        updater.path(),
+        ["clone", fixture.remote.to_str().unwrap(), "updater"],
+    );
+    let updater_repository = updater.path().join("updater");
+    git(
+        &updater_repository,
+        ["config", "user.name", "Batch Git Tests"],
+    );
+    git(
+        &updater_repository,
+        ["config", "user.email", "batch-git@example.invalid"],
+    );
+    fs::write(updater_repository.join("REMOTE.md"), "remote update\n").unwrap();
+    git(&updater_repository, ["add", "REMOTE.md"]);
+    git(&updater_repository, ["commit", "-m", "remote update"]);
+    git(&updater_repository, ["push", "origin", "main"]);
+
+    let repository = workspace.path().join("service-merge-outdated");
+    git(&repository, ["fetch", "origin"]);
+    let head_before = git_output(&repository, ["rev-parse", "HEAD"]);
+
+    batch_git(workspace.path())
+        .args(["merge", "feature"])
+        .assert()
+        .code(1)
+        .stdout(predicate::str::contains("behind upstream by 1 commit(s)"));
+    assert_eq!(git_output(&repository, ["rev-parse", "HEAD"]), head_before);
+    assert!(
+        !repository.join(".git").join("MERGE_HEAD").exists(),
+        "the rejected merge must not leave an in-progress Git operation"
+    );
+
+    batch_git(workspace.path())
+        .args(["pull"])
+        .assert()
+        .success();
+    assert!(repository.join("REMOTE.md").is_file());
+}
+
+#[test]
 fn merge_default_uses_each_declared_complex_branch_and_primary_remote() {
     let first_fixture = Fixture::new("service-default-one");
     let second_fixture = Fixture::new("service-default-two");

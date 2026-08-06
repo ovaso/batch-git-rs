@@ -2246,6 +2246,28 @@ fn merge(
                 return RepositoryResult::skipped(repository, "source is the current branch");
             }
 
+            if !update_current {
+                match status.upstream {
+                    UpstreamSummary::Behind(count) => {
+                        return RepositoryResult::failed(
+                            repository,
+                            format!(
+                                "current branch is behind upstream by {count} commit(s); run pull or retry merge with --update-current"
+                            ),
+                        );
+                    }
+                    UpstreamSummary::Diverged { ahead, behind } => {
+                        return RepositoryResult::failed(
+                            repository,
+                            format!(
+                                "current branch has diverged from upstream: ahead {ahead}, behind {behind}; resolve the divergence before merging"
+                            ),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
             if update_current {
                 let output = match git::run_with_options(
                     &path,

@@ -831,7 +831,7 @@ pub struct MergeArgs {
     #[arg(long, conflicts_with = "no_update_current")]
     pub update_current: bool,
 
-    /// Do not update the current branch before merging.
+    /// Do not update the current branch before merging; reject branches behind their upstream.
     #[arg(long, conflicts_with = "update_current")]
     pub no_update_current: bool,
 
