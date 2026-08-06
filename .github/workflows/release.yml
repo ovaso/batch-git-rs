@@ -84,7 +84,7 @@ jobs:
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
         run: test "v$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')" = "$TAG"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
