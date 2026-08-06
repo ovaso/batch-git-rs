@@ -24,7 +24,7 @@ description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行
    分别记录 `ok`、`skipped` 和 `failed`。
 4. 对可写的 Git/清单操作先调用 `--output json --plan`，核对 `data.selection`、风险、预期副作用
    和 `workspace.revision`。merge plan 还应逐仓库核对 `source_branch`、`source_mode` 和
-   `remote_fallback`。plan 不访问远端，也不是跨仓库事务。
+   `remote_fallback` 与 `source_refresh_remote`。plan 不访问远端，也不是跨仓库事务。
 5. 只有用户明确授权实际变更时，才以同一精确命令加上
    `--apply --expect-workspace-revision <plan revision>` 执行。清单变更后必须重新 plan。
 6. 用新的 JSON receipt 和退出码报告结果；不要解析表格、颜色、`detail` 自然语言或 Git 原始输出。
@@ -120,8 +120,13 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:<commit-plan
 
 - 实际 `push` 前先运行 `push --dry-run`；只有明确授权时使用 `--set-upstream`，绝不 force push。
 - `checkout` 前检查工作树与分支；远端同名分支歧义必须传 `--remote`。`merge` 需要明确来源模式
-  （显式分支、`--feature` 或 `--default`）、范围和授权；`--default` 按仓库读取清单默认分支，
-  本地不存在时只回退到各自 `primary_remote`，且不会 fetch。不要自动解决、abort 或继续冲突。
+  （显式分支、`--feature` 或 `--default`）、范围和授权；`--update-current` / `--uc` 只允许以
+  ff-only 更新当前目标分支，`--refresh-source` / `--rs` 会 fetch 后将最新 remote-tracking 来源
+  合入当前分支，不移动本地来源分支。当前目标没有 upstream 的仅本地分支使用 `--uc` 时会跳过 pull，
+  并继续合并来源。`--default` 按仓库读取清单默认分支；未使用 `--rs` 时本地
+  不存在才回退到各自 `primary_remote`。两个行为的环境默认值可由
+  `BATCH_GIT_MERGE_UPDATE_CURRENT` / `BATCH_GIT_MERGE_REFRESH_SOURCE` 设置，但 CLI 的启用或
+  `--no-*` 关闭选项优先。不要自动解决、abort 或继续冲突。
 - schedule 使用其专用流程：`schedule plan` → `doctor` → `generate` 或 `register --dry-run` →
   明确授权后的 `register`。不要使用全局 `--plan schedule …`，该组合会被拒绝以避免语义混淆。
   `register`、`unregister`、`remove --unregister` 会改变原生调度器，必须单独得到授权。

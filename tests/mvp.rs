@@ -553,7 +553,6 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
         .args(["scan"])
         .assert()
         .success();
-
     let updater = tempfile::tempdir().unwrap();
     git(
         updater.path(),
@@ -591,12 +590,125 @@ fn merge_alias_optionally_updates_the_current_branch_first() {
     git(&repository, ["reset", "--hard", "origin/main"]);
     batch_git(workspace.path())
         .env("CURRENT_FEATURE_BRANCH", "feature")
-        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "true")
-        .args(["merge", "--feature"])
+        .args(["merge", "--uc", "--feature"])
         .assert()
         .success()
         .stdout(predicate::str::contains("service-merge  ok"));
     assert!(repository.join("REMOTE.md").is_file());
+    assert!(repository.join("FEATURE.md").is_file());
+}
+
+#[test]
+fn merge_refresh_source_uses_the_latest_remote_tracking_branch() {
+    let fixture = Fixture::new("service-merge-refresh-source");
+    let workspace = tempfile::tempdir().unwrap();
+    git(
+        workspace.path(),
+        [
+            "clone",
+            fixture.remote.to_str().unwrap(),
+            "service-merge-refresh-source",
+        ],
+    );
+    batch_git(workspace.path())
+        .args(["scan"])
+        .assert()
+        .success();
+    let repository = workspace.path().join("service-merge-refresh-source");
+    git(&repository, ["checkout", "-b", "feature", "origin/feature"]);
+    git(&repository, ["checkout", "main"]);
+
+    let updater = tempfile::tempdir().unwrap();
+    git(
+        updater.path(),
+        ["clone", fixture.remote.to_str().unwrap(), "updater"],
+    );
+    let updater_repository = updater.path().join("updater");
+    git(
+        &updater_repository,
+        ["config", "user.name", "Batch Git Tests"],
+    );
+    git(
+        &updater_repository,
+        ["config", "user.email", "batch-git@example.invalid"],
+    );
+    git(&updater_repository, ["checkout", "feature"]);
+    fs::write(
+        updater_repository.join("REMOTE_FEATURE.md"),
+        "latest feature update\n",
+    )
+    .unwrap();
+    git(&updater_repository, ["add", "REMOTE_FEATURE.md"]);
+    git(
+        &updater_repository,
+        ["commit", "-m", "latest feature update"],
+    );
+    git(&updater_repository, ["push", "origin", "feature"]);
+    git(&updater_repository, ["checkout", "main"]);
+    fs::write(
+        updater_repository.join("REMOTE_TARGET.md"),
+        "latest target update\n",
+    )
+    .unwrap();
+    git(&updater_repository, ["add", "REMOTE_TARGET.md"]);
+    git(
+        &updater_repository,
+        ["commit", "-m", "latest target update"],
+    );
+    git(&updater_repository, ["push", "origin", "main"]);
+
+    assert!(!repository.join("REMOTE_FEATURE.md").exists());
+    assert!(!repository.join("REMOTE_TARGET.md").exists());
+    let local_source_before = git_output(&repository, ["rev-parse", "feature"]);
+    batch_git(workspace.path())
+        .args(["merge", "--uc", "--rs", "feature"])
+        .assert()
+        .success();
+    assert!(repository.join("REMOTE_FEATURE.md").is_file());
+    assert!(repository.join("REMOTE_TARGET.md").is_file());
+    assert_eq!(
+        git_output(&repository, ["rev-parse", "feature"]),
+        local_source_before,
+        "refreshing a source must not move its local branch"
+    );
+}
+
+#[test]
+fn merge_update_current_skips_a_local_only_target_branch() {
+    let fixture = Fixture::new("service-merge-local-only-target");
+    let workspace = tempfile::tempdir().unwrap();
+    git(
+        workspace.path(),
+        [
+            "clone",
+            fixture.remote.to_str().unwrap(),
+            "service-merge-local-only-target",
+        ],
+    );
+    batch_git(workspace.path())
+        .args(["scan"])
+        .assert()
+        .success();
+
+    let repository = workspace.path().join("service-merge-local-only-target");
+    git(&repository, ["checkout", "-b", "local-feature"]);
+    assert!(
+        !Command::new("git")
+            .args(["config", "--get", "branch.local-feature.merge"])
+            .current_dir(&repository)
+            .status()
+            .unwrap()
+            .success(),
+        "the local-only branch must not have an upstream"
+    );
+
+    batch_git(workspace.path())
+        .args(["merge", "--uc", "feature"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "service-merge-local-only-target  ok",
+        ));
     assert!(repository.join("FEATURE.md").is_file());
 }
 
@@ -769,6 +881,11 @@ fn merge_default_help_and_conflicts_are_explicit() {
         .assert()
         .success()
         .stdout(predicate::str::contains("-d, --default"))
+        .stdout(predicate::str::contains("--update-current"))
+        .stdout(predicate::str::contains("--uc"))
+        .stdout(predicate::str::contains("--refresh-source"))
+        .stdout(predicate::str::contains("--rs"))
+        .stdout(predicate::str::contains("--no-refresh-source"))
         .stdout(predicate::str::contains("declared default branch"));
 
     for arguments in [
@@ -867,6 +984,31 @@ fn merge_cli_setting_overrides_and_validates_the_environment() {
     batch_git(workspace.path())
         .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
         .args(["merge", "--no-update-current", "feature"])
+        .assert()
+        .success();
+    batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_UPDATE_CURRENT", "invalid")
+        .args(["merge", "--uc", "feature"])
+        .assert()
+        .success();
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
+        .args(["merge", "feature"])
+        .assert()
+        .code(2)
+        .stderr(predicate::str::contains(
+            "invalid BATCH_GIT_MERGE_REFRESH_SOURCE value",
+        ));
+
+    batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
+        .args(["merge", "--no-refresh-source", "feature"])
+        .assert()
+        .success();
+    batch_git(workspace.path())
+        .env("BATCH_GIT_MERGE_REFRESH_SOURCE", "invalid")
+        .args(["merge", "--rs", "feature"])
         .assert()
         .success();
 }

@@ -95,6 +95,7 @@ batch-git info
 | `BATCH_GIT_REMOTE` | 未设置 | 普通 checkout/merge 的远端消歧名称；`--default` 固定使用各仓库的 `primary_remote` |
 | `CURRENT_FEATURE_BRANCH` | 未设置 | `checkout --feature` / `cf` 的目标分支，以及 `merge --feature` 的源分支 |
 | `BATCH_GIT_MERGE_UPDATE_CURRENT` | `false` | merge 前是否 ff-only 更新当前分支 |
+| `BATCH_GIT_MERGE_REFRESH_SOURCE` | `false` | merge 前是否 fetch 并使用最新 remote-tracking 来源分支 |
 | `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | 全仓库 Git 透传是否展示成功输出 |
 | `NO_COLOR` | 未设置 | 非空时禁用颜色 |
 

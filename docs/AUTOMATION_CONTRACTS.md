@@ -166,13 +166,20 @@ plan 的 `data` 包含 `mode=plan`、已解析仓库范围、风险、预期副�
 commit plan 会原样包含调用方提供的消息，日志系统应按普通提交元数据保护它，不要把 plan 当作
 秘密存储。plan 不执行 add、hook、签名或 `git read-tree`。
 
-`merge` plan 的每个 `selection.repositories[]` 还包含 `source_branch`、`source_mode` 和
-`remote_fallback`。`source_mode` 为 `explicit`、`feature_environment` 或
+`merge` plan 的每个 `selection.repositories[]` 还包含 `source_branch`、`source_mode`、
+`remote_fallback` 和 `source_refresh_remote`。`source_mode` 为 `explicit`、`feature_environment` 或
 `workspace_default`；最后一种模式按仓库读取清单中的 `default_branch`，因此不同仓库可以显示
 不同来源。`remote_fallback` 只是本地同名分支不存在时的远端解析范围，不表示 plan 已读取或
-锁定该远端引用；`merge --default` 使用各仓库的 `primary_remote`，普通 merge 未指定远端时为
-`null`。对 `workspace_default`，apply 的 workspace revision 前置条件会防止清单中的分支或主远端
-在 plan 后静默漂移；显式参数和环境变量仍须由调用方在 apply 时保持一致。
+锁定该远端引用；`source_refresh_remote` 仅在 `--refresh-source` / `--rs` 时出现，表示 apply 会
+fetch 后合并的远端。普通 merge 的 `parameters` 包含 `update_current` 与 `refresh_source` 布尔值；
+前者对应 `--update-current` / `--uc` 的 ff-only 目标分支更新，后者对应 `--refresh-source` / `--rs`
+的来源刷新。`merge --default` 使用各仓库的 `primary_remote`，普通 merge 未指定远端时刷新同样
+使用 `primary_remote`。对 `workspace_default`，apply 的 workspace revision 前置条件会防止清单中的
+分支或主远端在 plan 后静默漂移；显式参数和环境变量仍须由调用方在 apply 时保持一致。
+`BATCH_GIT_MERGE_UPDATE_CURRENT` 与 `BATCH_GIT_MERGE_REFRESH_SOURCE` 分别提供默认值；CLI 的
+启用或 `--no-*` 关闭选项优先，plan 中的两个布尔参数始终反映实际 apply 将采用的有效值。
+当 `update_current` 为 true 而当前分支没有 upstream 时，该仓库会跳过 ff-only pull 并继续来源合并；
+该参数表示请求的行为，不保证每个仓库都实际启动 pull。
 
 apply 在获取工作区锁后、执行 Git 前重新核对 `workspace.toml` 字节摘要。它防止清单在
 plan 与执行之间漂移，但**不**保留远端、HEAD、index 或工作树状态；Git 的正常安全检查仍在

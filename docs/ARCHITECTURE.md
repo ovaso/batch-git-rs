@@ -50,6 +50,11 @@ fast-forward-only。`add` 只暂存全部非忽略的新增、修改和删除，
 空提交或 hook bypass；`unstage` 全量恢复 index 且不改工作树，unborn HEAD 使用
 `git read-tree --empty`。重写历史、清理工作树或强制推送仍不是内建自动化能力。
 
+`merge` 默认只使用现有本地引用。显式 `--update-current` / `--uc` 会先对有 upstream 的当前目标分支执行
+fast-forward-only pull；没有 upstream 的仅本地分支会跳过此步骤。显式 `--refresh-source` / `--rs` 会 fetch 声明远端并合并最新的
+remote-tracking 来源分支，而不移动本地来源分支。两者都可能修改工作树，冲突一律保留给用户处理，
+不自动 abort、continue、rebase 或回滚。
+
 commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产生 batch-git 无法分类的本地或外部
 副作用。系统 Git 的单仓库 index/ref lock 与工作区锁共同降低并发冲突，但外部原生 Git 不遵循
 `.workspace.lock`。批量命令不是事务：某些仓库已创建提交后，后续仓库失败或超时不会触发自动

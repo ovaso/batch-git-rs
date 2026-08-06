@@ -239,24 +239,38 @@ batch-git merge feature/login
 batch-git merge --feature
 batch-git merge --default
 batch-git merge --update-current feature/login
+batch-git merge --uc --rs --default
 batch-git merge --no-update-current feature/login
+batch-git merge --no-refresh-source feature/login
 ```
 
 `merge` 将源分支合并到各仓库的当前分支。默认不联网；如果本地 tracking ref 显示当前分支
 落后或已分叉，默认模式会在启动 Git merge 前失败，避免留下进行中的合并；先执行 `batch-git
 fetch` 以刷新该判断，再执行 `batch-git pull`，或显式使用 `--update-current`。后者会先对当前
-tracking 分支执行 fast-forward-only pull，但不会更新源分支。发生冲突时程序不会自动 `git merge
---abort`，应进入对应仓库检查并人工处理。`merge --feature` 使用
+tracking 分支执行 fast-forward-only pull；`--uc` 是它的简短别名。`--refresh-source`（`--rs`）会
+fetch 声明远端，并将来源解析为最新 remote-tracking 分支：`--default` 固定使用各仓库的
+`primary_remote`，普通 merge 优先使用 `--remote` / `BATCH_GIT_REMOTE`，否则使用
+`primary_remote`。它不会移动本地来源分支。两个开关可以组合，例如当前在 `test` 或 `dev` 时执行
+`batch-git merge --uc --rs feature/login`，会先 fast-forward 更新当前目标分支，再将最新远端
+feature 合入它。当前目标分支没有 upstream（例如仅本地的协作特性分支）时，`--uc` 会安全跳过
+预更新，继续合并来源，不会因 `git pull` 的未跟踪分支错误而失败。发生冲突时程序不会自动
+`git merge --abort`，应进入对应仓库检查并人工处理。
+`merge --feature` 使用
 `CURRENT_FEATURE_BRANCH` 作为源分支，无需再传分支名。
+
+`BATCH_GIT_MERGE_UPDATE_CURRENT` 与 `BATCH_GIT_MERGE_REFRESH_SOURCE` 可分别设置两个开关的
+工作区默认值。命令行优先于环境变量：`--uc` / `--update-current` 和 `--rs` / `--refresh-source`
+显式启用，`--no-update-current` 和 `--no-refresh-source` 显式关闭。因此可以在日常默认开启刷新时，
+对单次 merge 关闭任一行为。
 
 `merge --default` 分别读取每个仓库在 `workspace.toml` 中声明的 `default_branch`，将其合入
 该仓库的当前分支，适合默认分支名称不同或包含多级路径的工作区。解析时优先使用本地同名分支；
 本地不存在时，只在该仓库的 `primary_remote` 中寻找 remote-tracking 分支。它不 fetch，且
 单独执行 `batch-git fetch` 不会更新已有的本地默认分支；需要远端最新内容时，应先确认本地默认
-分支已按预期更新，或确认仓库只会回退到已刷新的 remote-tracking 分支。当前分支就是声明的默认
-分支时，该仓库正常跳过。
+分支已按预期更新，或使用 `--rs` 直接合并最新的 remote-tracking 默认分支。当前分支就是声明的
+默认分支时，该仓库正常跳过。
 `--default` 与位置分支、`--feature`、`--remote` 互斥，但可以与 `--update-current` 或
-`--no-update-current` 组合。
+`--no-update-current`、`--refresh-source`、`--no-refresh-source` 组合。
 
 ## 7. 暂存与提交
 

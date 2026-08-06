@@ -35,7 +35,7 @@
 | 快进更新 | `pull [selectors/--match]` | 将当前 tracking 分支 fast-forward 到远端 | 工作树写入 + 网络 | 仅在范围和干净状态已确认时使用；不绕过失败。 |
 | 安全发布 | `push [selection] [--dry-run] [-u/--set-upstream]` | 批量发布当前分支 | 远端写入 | 先 `--dry-run`，实际推送需用户授权；无 force push。 |
 | 目标分支切换/创建 | `checkout`、`cd`、`cf` | 跨仓库切换同名分支、默认分支或特性分支 | 工作树写入 | 先查状态和分支。远端歧义必须明确 `--remote`。 |
-| 跨仓库合并 | `merge <branch>`、`merge --feature`、`merge --default` | 将同一源分支或各仓库声明的默认分支合入当前分支 | 工作树写入、高风险 | 必须有明确来源、范围和授权；`--default` 逐仓库审阅 plan 来源且不隐式 fetch；冲突留给人工处理。 |
+| 跨仓库合并 | `merge <branch>`、`merge --feature`、`merge --default` | 将同一源分支或各仓库声明的默认分支合入当前分支 | 工作树写入、高风险 | 必须有明确来源、范围和授权；`--uc` 先 ff-only 更新当前目标，`--rs` fetch 后合并最新 remote-tracking 来源；冲突留给人工处理。 |
 | 原生 Git 逃生舱 | `-- <git-args>`、`exec ... -- <git-args>` | 覆盖没有内建命令的 Git 只读或精细动作 | 随传入命令变化 | 保留 `--`；默认只允许低风险只读命令。 |
 | 定时声明 | `schedule add/update/list/plan/doctor/generate` | 用可审阅声明规划跨平台自动同步 | 清单写入或只读 | 优先 `sync` action；使用 schedule 自己的 plan、doctor、generate，不能用全局 `--plan schedule …`。 |
 | 定时器生命周期 | `schedule register/unregister/remove/run/status` | 注册、检查、立即执行或清理原生调度任务 | 外部系统写入 | `register/unregister/remove --unregister` 需要明确授权；先 dry-run/generate。已注册任务的 hidden native-run child 强制非交互。 |

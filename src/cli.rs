@@ -828,12 +828,20 @@ pub struct CheckoutArgs {
 #[derive(Debug, Args)]
 pub struct MergeArgs {
     /// Update the current branch from its upstream with fast-forward only before merging.
-    #[arg(long, conflicts_with = "no_update_current")]
+    #[arg(long, visible_alias = "uc", conflicts_with = "no_update_current")]
     pub update_current: bool,
 
     /// Do not update the current branch before merging; reject branches behind their upstream.
     #[arg(long, conflicts_with = "update_current")]
     pub no_update_current: bool,
+
+    /// Refresh the source remote-tracking branch and merge it instead of a local source branch.
+    #[arg(long, visible_alias = "rs", conflicts_with = "no_refresh_source")]
+    pub refresh_source: bool,
+
+    /// Do not refresh the source branch before merging.
+    #[arg(long, conflicts_with = "refresh_source")]
+    pub no_refresh_source: bool,
 
     /// Select a remote when several contain the same source branch.
     #[arg(long, conflicts_with = "default")]

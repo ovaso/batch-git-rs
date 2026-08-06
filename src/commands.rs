@@ -257,10 +257,18 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
             let manifest = manifest
                 .as_ref()
                 .expect("merge requires a workspace manifest");
+            let update_current =
+                settings::merge_update_current(merge_update_current_setting(arguments))?;
+            let refresh_source =
+                settings::merge_refresh_source(merge_refresh_source_setting(arguments))?;
+            let mut side_effects = vec!["working_trees", "local_refs", "workspace_manifest"];
+            if refresh_source || update_current {
+                side_effects.push("network");
+            }
             (
                 "merge",
-                plan_merge_selection(&manifest.repositories, arguments)?,
-                vec!["working_trees", "local_refs", "workspace_manifest"],
+                plan_merge_selection(&manifest.repositories, arguments, refresh_source)?,
+                side_effects,
                 "working_tree",
             )
         }
@@ -331,6 +339,10 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
             "scope": "all_staged_changes",
             "preserves_working_tree": true,
             "moves_head": false,
+        })),
+        Command::Merge(arguments) => Some(json!({
+            "update_current": settings::merge_update_current(merge_update_current_setting(arguments))?,
+            "refresh_source": settings::merge_refresh_source(merge_refresh_source_setting(arguments))?,
         })),
         _ => None,
     };
@@ -489,6 +501,7 @@ fn plan_selection(records: &[RepositoryRecord]) -> Vec<serde_json::Value> {
 fn plan_merge_selection(
     records: &[RepositoryRecord],
     arguments: &MergeArgs,
+    refresh_source: bool,
 ) -> Result<Vec<serde_json::Value>> {
     let feature_branch = if arguments.feature {
         settings::current_feature_branch()?
@@ -529,9 +542,32 @@ fn plan_merge_selection(
                 "source_branch": source_branch,
                 "source_mode": source_mode,
                 "remote_fallback": source_remote,
+                "source_refresh_remote": refresh_source.then(|| {
+                    source_remote.unwrap_or(record.primary_remote.as_str())
+                }),
             })
         })
         .collect())
+}
+
+fn merge_update_current_setting(arguments: &MergeArgs) -> Option<bool> {
+    if arguments.update_current {
+        Some(true)
+    } else if arguments.no_update_current {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn merge_refresh_source_setting(arguments: &MergeArgs) -> Option<bool> {
+    if arguments.refresh_source {
+        Some(true)
+    } else if arguments.no_refresh_source {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 /// The operation-specific portion of a no-side-effect plan.
@@ -2180,9 +2216,13 @@ fn merge(
     verbose: bool,
     automation: &AutomationOptions,
 ) -> Result<i32> {
+    let update_current = settings::merge_update_current(merge_update_current_setting(&arguments))?;
+    let refresh_source = settings::merge_refresh_source(merge_refresh_source_setting(&arguments))?;
     let MergeArgs {
-        update_current,
-        no_update_current,
+        update_current: _,
+        no_update_current: _,
+        refresh_source: _,
+        no_refresh_source: _,
         remote,
         default,
         feature,
@@ -2206,13 +2246,6 @@ fn merge(
     let _lock = WorkspaceLock::acquire(&root)?;
     verify_apply_revision(&root, automation)?;
     let mut manifest = workspace::read(&root)?;
-    let update_current = settings::merge_update_current(if update_current {
-        Some(true)
-    } else if no_update_current {
-        Some(false)
-    } else {
-        None
-    })?;
     let results = map_repository_results(
         &manifest.repositories,
         jobs,
@@ -2268,7 +2301,8 @@ fn merge(
                 }
             }
 
-            if update_current {
+            let mut current_updated = false;
+            if update_current && !matches!(status.upstream, UpstreamSummary::None) {
                 let output = match git::run_with_options(
                     &path,
                     ["pull", "--ff-only"],
@@ -2286,6 +2320,7 @@ fn merge(
                         false,
                     );
                 }
+                current_updated = true;
             }
 
             let remote = if default {
@@ -2293,22 +2328,67 @@ fn merge(
             } else {
                 selected_remote.as_deref()
             };
-            let source = match git::checkout_target(&path, branch, remote) {
-                Ok(CheckoutTarget::Local) => branch.to_owned(),
-                Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
-                Ok(CheckoutTarget::Missing) => {
-                    return RepositoryResult::skipped(
+            let source = if refresh_source {
+                if let Err(error) = git::configure_declared_remotes(
+                    &path,
+                    repository,
+                    git_execution_options(automation, jobs == 1).allow_stdin,
+                ) {
+                    return RepositoryResult::failed(repository, error.to_string());
+                }
+                let output = match git::fetch_all_with_options(
+                    &path,
+                    git_execution_options(automation, jobs == 1),
+                ) {
+                    Ok(output) => output,
+                    Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+                };
+                if !output.success {
+                    return RepositoryResult::from_git(
                         repository,
-                        format!("branch {branch} does not exist"),
+                        output,
+                        "source remote refs refreshed",
+                        false,
                     );
                 }
-                Ok(CheckoutTarget::Ambiguous(matches)) => {
-                    return RepositoryResult::failed(
-                        repository,
-                        format!("branch is ambiguous: {}", matches.join(", ")),
-                    );
+                let refresh_remote = remote.or(Some(repository.primary_remote.as_str()));
+                match git::remote_tracking_target(&path, branch, refresh_remote) {
+                    Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
+                    Ok(CheckoutTarget::Missing) => {
+                        return RepositoryResult::skipped(
+                            repository,
+                            format!("remote source branch {branch} does not exist"),
+                        );
+                    }
+                    Ok(CheckoutTarget::Ambiguous(matches)) => {
+                        return RepositoryResult::failed(
+                            repository,
+                            format!("branch is ambiguous: {}", matches.join(", ")),
+                        );
+                    }
+                    Ok(CheckoutTarget::Local) => {
+                        unreachable!("remote-only resolution cannot be local")
+                    }
+                    Err(error) => return RepositoryResult::failed(repository, error.to_string()),
                 }
-                Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+            } else {
+                match git::checkout_target(&path, branch, remote) {
+                    Ok(CheckoutTarget::Local) => branch.to_owned(),
+                    Ok(CheckoutTarget::Remote(remote_branch)) => remote_branch,
+                    Ok(CheckoutTarget::Missing) => {
+                        return RepositoryResult::skipped(
+                            repository,
+                            format!("branch {branch} does not exist"),
+                        );
+                    }
+                    Ok(CheckoutTarget::Ambiguous(matches)) => {
+                        return RepositoryResult::failed(
+                            repository,
+                            format!("branch is ambiguous: {}", matches.join(", ")),
+                        );
+                    }
+                    Err(error) => return RepositoryResult::failed(repository, error.to_string()),
+                }
             };
             match git::run_with_options(
                 &path,
@@ -2320,7 +2400,7 @@ fn merge(
                     repository,
                     output,
                     format!("merged {source} into {}", status.branch),
-                    update_current,
+                    current_updated || refresh_source,
                 ),
                 Err(error) => RepositoryResult::failed(repository, error.to_string()),
             }

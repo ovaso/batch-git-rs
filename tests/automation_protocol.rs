@@ -680,7 +680,7 @@ fn merge_default_plan_exposes_each_declared_source_without_rewriting_the_manifes
 
     let receipt = json_output(run(
         &fixture.workspace,
-        &["--output", "json", "--plan", "merge", "--default"],
+        &["--output", "json", "--plan", "merge", "--default", "--rs"],
     ));
     assert_success_receipt(&receipt, "merge");
     assert_workspace_revision(&receipt);
@@ -694,6 +694,11 @@ fn merge_default_plan_exposes_each_declared_source_without_rewriting_the_manifes
     assert_eq!(source["source_branch"], "release/2026.08/customer-a");
     assert_eq!(source["source_mode"], "workspace_default");
     assert_eq!(source["remote_fallback"], "origin");
+    assert_eq!(source["source_refresh_remote"], "origin");
+    assert_eq!(
+        receipt["data"]["parameters"],
+        json!({"update_current": false, "refresh_source": true})
+    );
     assert_eq!(
         fs::read(&manifest_path).expect("read manifest after merge plan"),
         before,

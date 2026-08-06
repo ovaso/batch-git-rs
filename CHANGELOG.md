@@ -3,7 +3,20 @@
 本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
 [语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
-## [Unreleased]
+## [0.4.2] - 2026-08-06
+
+### Added
+
+- `merge` 新增 `--refresh-source`（`--rs`）：刷新来源远端引用后，合并最新的 remote-tracking
+  来源分支而不移动本地来源分支；可与既有 `--update-current` 的新别名 `--uc` 组合，用于先
+  ff-only 更新当前目标分支再合并来源。两个行为可由
+  `BATCH_GIT_MERGE_UPDATE_CURRENT` / `BATCH_GIT_MERGE_REFRESH_SOURCE` 配置默认值，并由 CLI
+  启用或 `--no-*` 关闭选项覆盖。
+
+### Fixed
+
+- `merge --update-current`（`--uc`）在当前目标分支没有 upstream 时跳过 ff-only pull，允许仅本地的
+  特性分支继续合并来源分支。
 
 ## [0.4.1] - 2026-08-06
 
@@ -166,7 +179,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/livenv/batch-git/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/livenv/batch-git/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/livenv/batch-git/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/livenv/batch-git/compare/v0.2.0...v0.3.0

@@ -90,6 +90,18 @@ pub(crate) fn merge_update_current(cli_value: Option<bool>) -> Result<bool> {
     }
 }
 
+/// 解析 merge 前是否刷新远端来源分支。
+pub(crate) fn merge_refresh_source(cli_value: Option<bool>) -> Result<bool> {
+    if let Some(value) = cli_value {
+        return Ok(value);
+    }
+    match std::env::var("BATCH_GIT_MERGE_REFRESH_SOURCE") {
+        Ok(value) => parse_bool("BATCH_GIT_MERGE_REFRESH_SOURCE", &value),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// 从 CLI 或环境变量读取正整数，并为错误补充配置项名称。
 fn positive_usize(
     label: &str,

@@ -1236,6 +1236,29 @@ pub fn checkout_target(path: &Path, branch: &str, remote: Option<&str>) -> Resul
         return Ok(CheckoutTarget::Local);
     }
 
+    remote_tracking_target_in_repository(&repository, branch, remote)
+}
+
+/// Resolve a remote-tracking branch without falling back to a same-named local branch.
+pub fn remote_tracking_target(
+    path: &Path,
+    branch: &str,
+    remote: Option<&str>,
+) -> Result<CheckoutTarget> {
+    let full_name = format!("refs/heads/{branch}");
+    if !git2::Reference::is_valid_name(&full_name) {
+        bail!("invalid branch name: {branch}");
+    }
+    let repository = Repository::open(path)
+        .with_context(|| format!("failed to open Git repository {}", path.display()))?;
+    remote_tracking_target_in_repository(&repository, branch, remote)
+}
+
+fn remote_tracking_target_in_repository(
+    repository: &Repository,
+    branch: &str,
+    remote: Option<&str>,
+) -> Result<CheckoutTarget> {
     let mut matches = Vec::new();
     let branches = repository
         .branches(Some(BranchType::Remote))
