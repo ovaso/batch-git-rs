@@ -101,7 +101,7 @@ jobs:
         run: cargo llvm-cov --locked --lcov --output-path lcov.info
       - name: Show coverage summary
         run: cargo llvm-cov report --summary-only
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-lcov
           path: lcov.info
