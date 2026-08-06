@@ -1,6 +1,16 @@
 //! Branch checkout and merge operations.
 
-use super::*;
+use anyhow::{Result, bail};
+use serde_json::json;
+
+use super::{git_execution_options, map_repository_results, merge_settings, verify_apply_revision};
+use crate::automation::{self, AutomationOptions};
+use crate::cli::{CheckoutArgs, MergeArgs};
+use crate::git::{self, CheckoutTarget, UpstreamSummary};
+use crate::model::now;
+use crate::report::{RepositoryResult, print_checkout_summary, print_selected_results};
+use crate::settings;
+use crate::workspace::{self, WorkspaceLock};
 
 /// 在各仓库解析并安全切换目标分支，缺少分支时允许正常跳过。
 pub(super) fn checkout(

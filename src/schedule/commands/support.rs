@@ -1,6 +1,8 @@
 //! Pure schedule lookup, selection, and presentation helpers.
 
-use super::*;
+use anyhow::Result;
+
+use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, Workspace};
 
 /// Find a schedule by its unique manifest name.
 pub(super) fn find_schedule<'a>(manifest: &'a Workspace, name: &str) -> Result<&'a ScheduleRecord> {

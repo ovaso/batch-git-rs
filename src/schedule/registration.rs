@@ -1,6 +1,14 @@
 //! Native scheduler file activation and system command boundaries.
 
-use super::*;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+use anyhow::{Context, Result, bail};
+use tempfile::NamedTempFile;
+
+use super::{NativeArtifact, NativePlatform, RegistrationState};
 
 /// 原子写入所有定义后激活任务；失败时尽量恢复旧文件。
 pub(super) fn write_and_activate(

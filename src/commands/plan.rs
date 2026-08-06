@@ -1,6 +1,18 @@
 //! Side-effect-free planning for mutating commands.
 
-use super::*;
+use std::collections::HashSet;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Result, bail};
+use serde_json::json;
+
+use super::{default_clone_directory, merge_settings, relative_string, select_exec_repositories};
+use crate::automation::{self, AutomationOptions};
+use crate::cli::{CloneArgs, Command, MergeArgs, ScanArgs};
+use crate::git;
+use crate::model::{RepositoryRecord, WORKSPACE_FILE, Workspace, validate_directory};
+use crate::{settings, table, workspace};
 
 /// Produce a reviewable, no-side-effect description of a mutating built-in command.
 ///

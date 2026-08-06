@@ -1,6 +1,16 @@
 //! Registration state persistence, validation, and live status queries.
 
-use super::*;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use anyhow::{Context, Result, bail};
+
+use super::artifact::{fnv1a, native_paths, task_id};
+use super::registration::{atomic_write, launchd_domain};
+use super::{NativePlatform, NativeStatus, RegistrationState};
+use crate::settings::{home_directory, state_root};
 
 /// 查询任务是否加载及最近退出状态；任务不存在不是致命错误。
 pub(super) fn native_status(state: &RegistrationState) -> Result<NativeStatus> {

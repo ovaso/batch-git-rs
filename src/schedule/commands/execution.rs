@@ -1,9 +1,23 @@
 //! Schedule planning and execution through the regular command workflows.
 
+use std::env;
+use std::fs::{self, OpenOptions};
+use std::process::{Command, Stdio};
+
+use anyhow::{Context, Result, bail};
+use serde::Serialize;
+use serde_json::json;
+
+use super::CommandContext;
 use super::support::{
     action_label, find_schedule, overlap_label, selected_repositories, trigger_label,
 };
-use super::*;
+use crate::automation::AutomationOptions;
+use crate::cli::{ScheduleNameArgs, ScheduleNativeRunArgs, ScheduleRunArgs};
+use crate::model::{ScheduleAction, ScheduleOverlap, Workspace};
+use crate::schedule::state::schedule_log_directory;
+use crate::table;
+use crate::workspace::{self, WorkspaceLock};
 
 /// Shared model for human and machine `schedule plan` output.
 #[derive(Debug, Serialize)]

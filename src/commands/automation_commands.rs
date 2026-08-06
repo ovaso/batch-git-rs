@@ -1,16 +1,21 @@
 //! Automation capability, environment, and schema discovery commands.
 
-use super::*;
+use anyhow::Result;
+use serde::Serialize;
+use serde_json::json;
+
+use crate::automation::{self, AutomationOptions};
+use crate::cli::{EnvArgs, EnvCommand, EnvListArgs, SchemaArgs, SchemaDocument};
+use crate::{color, settings, table};
 
 /// Return the current binary's protocol surface rather than requiring agents to guess it.
 pub(super) fn capabilities(automation: &AutomationOptions) -> Result<i32> {
-    let commands = command_capabilities();
     let data = json!({
         "binary_version": env!("CARGO_PKG_VERSION"),
         "automation_protocol": automation::API_VERSION,
         "output_formats": ["text", "json", "jsonl"],
         "schemas": ["operation-result", "workspace"],
-        "commands": commands,
+        "commands": COMMAND_CAPABILITIES,
         "automation": {
             "structured_top_level_errors": true,
             "per_repository_results": true,
@@ -45,64 +50,33 @@ pub(super) fn capabilities(automation: &AutomationOptions) -> Result<i32> {
     Ok(0)
 }
 
-#[cfg(feature = "schedule")]
-fn command_capabilities() -> &'static [&'static str] {
-    &[
-        "add",
-        "branch",
-        "capabilities",
-        "checkout",
-        "clone",
-        "commit",
-        "env",
-        "exec",
-        "fetch",
-        "find",
-        "forget",
-        "info",
-        "list",
-        "merge",
-        "pull",
-        "push",
-        "restore",
-        "scan",
-        "schedule",
-        "schema",
-        "status",
-        "sync",
-        "unstage",
-        "passthrough",
-    ]
-}
-
-#[cfg(not(feature = "schedule"))]
-fn command_capabilities() -> &'static [&'static str] {
-    &[
-        "add",
-        "branch",
-        "capabilities",
-        "checkout",
-        "clone",
-        "commit",
-        "env",
-        "exec",
-        "fetch",
-        "find",
-        "forget",
-        "info",
-        "list",
-        "merge",
-        "pull",
-        "push",
-        "restore",
-        "scan",
-        "schema",
-        "status",
-        "sync",
-        "unstage",
-        "passthrough",
-    ]
-}
+const COMMAND_CAPABILITIES: &[&str] = &[
+    "add",
+    "branch",
+    "capabilities",
+    "checkout",
+    "clone",
+    "commit",
+    "env",
+    "exec",
+    "fetch",
+    "find",
+    "forget",
+    "info",
+    "list",
+    "merge",
+    "pull",
+    "push",
+    "restore",
+    "scan",
+    #[cfg(feature = "schedule")]
+    "schedule",
+    "schema",
+    "status",
+    "sync",
+    "unstage",
+    "passthrough",
+];
 
 /// Show supported environment variables without requiring a workspace manifest.
 pub(super) fn environment(

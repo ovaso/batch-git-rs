@@ -1,6 +1,13 @@
 //! Windows Task Scheduler XML definition generation.
 
-use super::*;
+use std::path::PathBuf;
+
+use anyhow::{Result, bail};
+
+use super::{ArtifactContext, xml_escape};
+use crate::model::{ScheduleOverlap, schedule_interval_seconds};
+use crate::schedule::state::windows_task_directory;
+use crate::schedule::{NativeArtifact, NativeFile, NativePlatform};
 
 pub(super) fn build(context: ArtifactContext<'_>) -> Result<NativeArtifact> {
     let ArtifactContext {

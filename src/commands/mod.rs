@@ -1,4 +1,5 @@
 //! Built-in command orchestration.
+#![deny(clippy::wildcard_imports)]
 
 mod automation_commands;
 mod branches;
@@ -16,33 +17,20 @@ pub(crate) use remote::{run_pull_named, run_sync_named};
 use plan::plan_passthrough;
 use workspace_commands::{default_clone_directory, relative_string, restore_one};
 
-use std::collections::HashSet;
-use std::ffi::OsString;
 use std::io::{self, IsTerminal};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use anyhow::{Result, bail};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use serde::Serialize;
-use serde_json::json;
 
-use crate::automation::{self, AutomationOptions};
-use crate::cli::{
-    CheckoutArgs, Cli, CloneArgs, Command, CommitArgs, EnvArgs, EnvCommand, EnvListArgs, ExecArgs,
-    MergeArgs, PushArgs, RuntimeOptions, ScanArgs, SchemaArgs, SchemaDocument, SyncArgs,
-};
-use crate::color;
-use crate::git::{self, CheckoutTarget, GitExecutionOptions, GitOutput, UpstreamSummary};
-use crate::model::{RepositoryRecord, WORKSPACE_FILE, Workspace, now, validate_directory};
+use crate::automation::AutomationOptions;
+use crate::cli::{CheckoutArgs, Cli, Command, ExecArgs, MergeArgs};
+use crate::git::GitExecutionOptions;
+use crate::model::{RepositoryRecord, Workspace};
 use crate::parallel::map_ordered_with_completion;
-use crate::report::{
-    JsonlProgress, RepositoryResult, print_checkout_summary, print_push_summary, print_results,
-    print_selected_results,
-};
-use crate::selector::wildcard_matches;
+use crate::report::{JsonlProgress, RepositoryResult};
 use crate::settings;
-use crate::table;
-use crate::workspace::{self, WorkspaceLock};
+use crate::workspace;
 
 /// 解析公共运行配置，并把顶层子命令分派到对应工作流。
 pub fn dispatch(cli: Cli) -> Result<i32> {

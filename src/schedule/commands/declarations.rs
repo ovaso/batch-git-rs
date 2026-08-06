@@ -1,7 +1,17 @@
 //! Persistent schedule declaration mutations.
 
+use anyhow::{Result, bail};
+use serde_json::json;
+
+use super::CommandContext;
 use super::native::{print_unregister_outcome, unregister_locked};
-use super::*;
+use crate::cli::{
+    ScheduleActionValue, ScheduleAddArgs, ScheduleOverlapValue, SchedulePlatform,
+    ScheduleRemoveArgs, ScheduleUnregisterArgs, ScheduleUpdateArgs,
+};
+use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScope, Workspace};
+use crate::schedule::state::load_state;
+use crate::workspace::{self, WorkspaceLock};
 
 /// Validate and append one schedule declaration to workspace.toml.
 pub(super) fn add(arguments: ScheduleAddArgs, context: &CommandContext<'_>) -> Result<i32> {

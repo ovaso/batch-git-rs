@@ -1,6 +1,19 @@
 //! Fetch, sync, pull, and push orchestration.
 
-use super::*;
+use std::path::Path;
+
+use anyhow::Result;
+
+use super::{
+    OperationProgress, finish_operation, git_execution_options, map_repository_results,
+    restore_one, set_operation_status, verify_apply_revision,
+};
+use crate::automation::AutomationOptions;
+use crate::cli::{PushArgs, SyncArgs};
+use crate::git::{self, GitExecutionOptions, UpstreamSummary};
+use crate::model::{RepositoryRecord, Workspace, now};
+use crate::report::{RepositoryResult, print_push_summary};
+use crate::workspace::{self, WorkspaceLock};
 
 /// 对所有已物化仓库执行 fetch/prune，不改变工作树。
 pub(super) fn fetch(jobs: usize, verbose: bool, automation: &AutomationOptions) -> Result<i32> {

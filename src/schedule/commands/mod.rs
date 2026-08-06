@@ -6,7 +6,14 @@ mod native;
 mod query;
 mod support;
 
-use super::*;
+use std::path::Path;
+
+use anyhow::Result;
+use serde::Serialize;
+
+use crate::automation::{self, AutomationOptions};
+use crate::cli::{ScheduleArgs, ScheduleCommand};
+use crate::workspace;
 
 #[cfg(test)]
 pub(super) use execution::native_run_child_arguments;

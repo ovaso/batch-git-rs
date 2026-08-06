@@ -1,8 +1,18 @@
 //! Read-only schedule list, status, and validation commands.
 
+use anyhow::{Result, bail};
+use serde::Serialize;
+
+use super::CommandContext;
 use super::execution::build_plan;
 use super::support::{action_label, find_schedule, trigger_label};
-use super::*;
+use crate::cli::{ScheduleDoctorArgs, ScheduleListArgs, ScheduleNameArgs};
+use crate::schedule::artifact::{
+    artifact_digest, artifact_files_match, build_artifact, build_artifact_with_logging,
+};
+use crate::schedule::state::{load_state, native_status};
+use crate::schedule::{NativePlatform, yes_no};
+use crate::{table, workspace};
 
 #[derive(Serialize)]
 struct ScheduleListItem {

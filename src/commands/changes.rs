@@ -1,6 +1,16 @@
 //! Index and local history operations.
 
-use super::*;
+use std::path::Path;
+
+use anyhow::{Result, bail};
+
+use super::{git_execution_options, map_repository_results, verify_apply_revision};
+use crate::automation::AutomationOptions;
+use crate::cli::{CommitArgs, SyncArgs};
+use crate::git;
+use crate::model::RepositoryRecord;
+use crate::report::{RepositoryResult, print_selected_results};
+use crate::workspace::{self, WorkspaceLock};
 
 /// Stage every tracked, untracked, and deleted path in the selected repositories.
 pub(super) fn add(

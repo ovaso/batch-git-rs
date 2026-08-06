@@ -1,8 +1,30 @@
 //! Native scheduler definition, registration, and removal workflows.
 
+use std::fs;
+use std::path::Path;
+
+use anyhow::{Context, Result, bail};
+use serde::Serialize;
+use serde_json::json;
+
+use super::CommandContext;
 use super::execution::build_plan;
 use super::support::find_schedule;
-use super::*;
+use crate::cli::{
+    SchedulePlatform, SchedulePlatformArgs, ScheduleRegisterArgs, ScheduleUnregisterArgs,
+};
+use crate::model::now;
+use crate::schedule::artifact::{
+    artifact_digest, artifact_files_match, artifact_output, build_artifact, print_artifact,
+};
+use crate::schedule::registration::{
+    deactivate, native_task_exists, remove_registered_files, write_and_activate,
+};
+use crate::schedule::state::{
+    load_state, registration_state_path, schedule_log_directory, write_state,
+};
+use crate::schedule::{NativePlatform, RegistrationState};
+use crate::workspace::{self, WorkspaceLock};
 
 /// Generate native definitions for review without writing them.
 pub(super) fn generate(

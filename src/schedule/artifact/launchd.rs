@@ -1,6 +1,14 @@
 //! launchd plist definition generation.
 
-use super::*;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Result, bail};
+
+use super::{ArtifactContext, xml_escape};
+use crate::cron::CronExpression;
+use crate::model::schedule_interval_seconds;
+use crate::schedule::{NativeArtifact, NativeFile, NativePlatform};
+use crate::settings::home_directory;
 
 pub(super) fn build(context: ArtifactContext<'_>) -> Result<NativeArtifact> {
     let ArtifactContext {

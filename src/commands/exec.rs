@@ -1,6 +1,21 @@
 //! Explicit Git passthrough and selected repository execution.
 
-use super::*;
+use std::collections::HashSet;
+use std::ffi::OsString;
+
+use anyhow::{Result, bail};
+
+use super::{
+    git_execution_options, map_repository_results, plan_passthrough, verify_apply_revision,
+};
+use crate::automation::AutomationOptions;
+use crate::cli::{ExecArgs, RuntimeOptions};
+use crate::git::{self, GitOutput};
+use crate::model::RepositoryRecord;
+use crate::report::{RepositoryResult, print_results, print_selected_results};
+use crate::selector::wildcard_matches;
+use crate::settings;
+use crate::workspace::{self, WorkspaceLock};
 
 /// 在所有已物化仓库中原样执行 `--` 后的 Git 参数。
 pub fn passthrough(args: Vec<OsString>, options: RuntimeOptions) -> Result<i32> {

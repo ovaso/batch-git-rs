@@ -1,4 +1,5 @@
 //! Schedule declaration orchestration and native scheduler integration.
+#![deny(clippy::wildcard_imports)]
 
 mod artifact;
 mod commands;
@@ -9,39 +10,12 @@ pub(crate) use commands::dispatch;
 #[cfg(test)]
 use commands::native_run_child_arguments;
 
-use artifact::*;
-use registration::*;
-use state::{
-    load_state, native_status, registration_state_path, schedule_log_directory,
-    systemd_user_directory, windows_task_directory, write_state,
-};
+use std::path::PathBuf;
 
-use std::env;
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-
-use anyhow::{Context, Result, bail};
+use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tempfile::NamedTempFile;
 
-use crate::automation::{self, AutomationOptions};
-use crate::cli::{
-    ScheduleActionValue, ScheduleAddArgs, ScheduleArgs, ScheduleCommand, ScheduleDoctorArgs,
-    ScheduleListArgs, ScheduleNameArgs, ScheduleNativeRunArgs, ScheduleOverlapValue,
-    SchedulePlatform, SchedulePlatformArgs, ScheduleRegisterArgs, ScheduleRemoveArgs,
-    ScheduleRunArgs, ScheduleUnregisterArgs, ScheduleUpdateArgs,
-};
-use crate::cron::CronExpression;
-use crate::model::{
-    ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScope, Workspace, now,
-    schedule_interval_seconds,
-};
-use crate::settings::{self, home_directory, state_root};
-use crate::table;
-use crate::workspace::{self, WorkspaceLock};
+use crate::cli::SchedulePlatform;
 
 /// 支持生成和注册的原生用户级调度器。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -155,12 +129,12 @@ struct NativeStatus {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        NativePlatform, artifact_digest, build_artifact, build_artifact_with_logging,
-        build_artifact_with_options, fnv1a, launchd_cron_trigger, native_run_child_arguments,
-        systemd_cron_trigger, systemd_quote, windows_argument, windows_repetition_interval,
-        xml_escape,
+    use super::artifact::{
+        artifact_digest, build_artifact, build_artifact_with_logging, build_artifact_with_options,
+        fnv1a, launchd_cron_trigger, systemd_cron_trigger, systemd_quote, windows_argument,
+        windows_repetition_interval, xml_escape,
     };
+    use super::{NativePlatform, native_run_child_arguments};
     use crate::automation::AutomationOptions;
     use crate::cron::CronExpression;
     use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScope};
