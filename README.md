@@ -7,7 +7,7 @@
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
 `workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
-当前封版版本：`0.4.2`。
+当前封版版本：`0.4.3`。
 
 ## 主要能力
 
@@ -103,6 +103,7 @@ batch-git -- <git-args...>          # 在全部仓库中原样执行 Git
 | 创建或补充清单 | `batch-git scan` |
 | 查看工作区状态 | `batch-git status` |
 | 查看当前分支 | `batch-git branch` |
+| 查看支持的环境变量与生效值 | `batch-git env ls` |
 | 暂存全部非忽略变更 | `batch-git add [repositories]` |
 | 提交已暂存内容 | `batch-git commit [repositories] -m <message>` |
 | 撤销全部暂存并保留工作树 | `batch-git unstage [repositories]` |

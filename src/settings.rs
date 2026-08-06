@@ -1,11 +1,141 @@
 //! Runtime-only settings resolved from CLI flags and environment variables.
 
 use anyhow::{Context, Result, bail};
-
 /// 默认并发仓库数。
 pub(crate) const DEFAULT_JOBS: usize = 4;
 /// 默认只扫描工作区根目录下一层。
 pub(crate) const DEFAULT_SCAN_DEPTH: usize = 1;
+
+/// 一项由 batch-git 明确支持的环境变量及其最终生效值。
+#[derive(Debug)]
+pub(crate) struct EnvironmentVariable {
+    pub(crate) name: &'static str,
+    pub(crate) description: &'static str,
+    pub(crate) default: String,
+    pub(crate) current: String,
+}
+
+/// 列出公开运行时环境变量，并复用真实解析器计算最终生效值。
+pub(crate) fn environment_variables(resolved_jobs: usize) -> Result<Vec<EnvironmentVariable>> {
+    let workspace = crate::workspace::find_root_optional()?
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "<not found>".to_owned());
+    let state_directory = crate::schedule::state_root()?
+        .to_string_lossy()
+        .into_owned();
+
+    Ok(vec![
+        environment_variable(
+            "BATCH_GIT_JOBS",
+            "Maximum number of repositories operated concurrently.",
+            DEFAULT_JOBS,
+            resolved_jobs,
+        ),
+        environment_variable(
+            "BATCH_GIT_SCAN_DEPTH",
+            "Default maximum directory depth used by scan.",
+            DEFAULT_SCAN_DEPTH,
+            scan_depth(None)?,
+        ),
+        environment_variable(
+            "BATCH_GIT_WORKSPACE",
+            "Absolute workspace override for commands that discover workspace.toml.",
+            "<auto-discover>",
+            workspace,
+        ),
+        environment_variable(
+            "BATCH_GIT_STATE_DIR",
+            "Root directory for schedule registration state and logs.",
+            default_state_directory(),
+            state_directory,
+        ),
+        environment_variable(
+            "BATCH_GIT_SCHEDULE_LOG",
+            "Whether registered schedules save stdout and stderr logs.",
+            false,
+            schedule_log_enabled()?,
+        ),
+        environment_variable(
+            "BATCH_GIT_TZ",
+            "Timezone used when generating and running schedules.",
+            "<system timezone>",
+            schedule_timezone()?.unwrap_or_else(|| "<system timezone>".to_owned()),
+        ),
+        environment_variable(
+            "BATCH_GIT_REMOTE",
+            "Remote name used to disambiguate ordinary checkout and merge sources.",
+            "<unset>",
+            display_optional(checkout_remote(None)),
+        ),
+        environment_variable(
+            "CURRENT_FEATURE_BRANCH",
+            "Branch used by checkout --feature and merge --feature.",
+            "<unset>",
+            display_optional(current_feature_branch()?),
+        ),
+        environment_variable(
+            "BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE",
+            "Whether merge --default refreshes its remote source by default.",
+            true,
+            merge_default_refresh_source()?,
+        ),
+        environment_variable(
+            "BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT",
+            "Whether merge --feature updates the current branch by default.",
+            false,
+            merge_feature_update_current()?,
+        ),
+        environment_variable(
+            "BATCH_GIT_PASSTHROUGH_VERBOSE",
+            "Whether whole-workspace Git passthrough prints successful output.",
+            true,
+            passthrough_verbose()?,
+        ),
+        environment_variable(
+            "NO_COLOR",
+            "Disable ANSI colors when this variable is present.",
+            false,
+            std::env::var_os("NO_COLOR").is_some(),
+        ),
+    ])
+}
+
+fn environment_variable(
+    name: &'static str,
+    description: &'static str,
+    default: impl ToString,
+    current: impl ToString,
+) -> EnvironmentVariable {
+    EnvironmentVariable {
+        name,
+        description,
+        default: default.to_string(),
+        current: current.to_string(),
+    }
+}
+
+fn display_optional(value: Option<String>) -> String {
+    match value {
+        Some(value) if value.is_empty() => "<empty>".to_owned(),
+        Some(value) => value,
+        None => "<unset>".to_owned(),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn default_state_directory() -> &'static str {
+    "$HOME/Library/Application Support/batch-git"
+}
+
+#[cfg(target_os = "windows")]
+fn default_state_directory() -> &'static str {
+    "%LOCALAPPDATA%\\batch-git"
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn default_state_directory() -> &'static str {
+    "$XDG_STATE_HOME/batch-git or $HOME/.local/state/batch-git"
+}
 
 /// 解析并发数，优先级依次为 CLI、环境变量、默认值。
 pub(crate) fn jobs(cli_value: Option<usize>) -> Result<usize> {

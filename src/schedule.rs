@@ -2110,7 +2110,7 @@ fn schedule_log_directory(root: &Path, name: &str) -> Result<PathBuf> {
 }
 
 /// 根据平台约定和环境变量确定 batch-git 用户状态根目录。
-fn state_root() -> Result<PathBuf> {
+pub(crate) fn state_root() -> Result<PathBuf> {
     if let Some(value) = env::var_os("BATCH_GIT_STATE_DIR") {
         return Ok(PathBuf::from(value));
     }

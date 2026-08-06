@@ -182,7 +182,7 @@ pub fn preflight_options(args: &[OsString]) -> AutomationOptions {
 /// Guess the built-in command for a structured top-level error without touching passthrough args.
 pub fn preflight_command(args: &[OsString]) -> Option<String> {
     let mut skip_next = false;
-    let mut schedule = false;
+    let mut parent_command: Option<String> = None;
     for value in args.iter().skip(1) {
         let value = value.to_string_lossy();
         if value == "--" {
@@ -202,17 +202,22 @@ pub fn preflight_command(args: &[OsString]) -> Option<String> {
         if value.starts_with("--") {
             continue;
         }
-        if schedule {
-            return Some(format!("schedule {}", canonical_schedule_action(&value)));
+        if let Some(parent) = parent_command.as_deref() {
+            let action = match parent {
+                "schedule" => canonical_schedule_action(&value),
+                "env" => canonical_env_action(&value),
+                _ => unreachable!("only nested built-in commands are tracked"),
+            };
+            return Some(format!("{parent} {action}"));
         }
         let command = canonical_command(&value);
-        if command == "schedule" {
-            schedule = true;
+        if matches!(command, "schedule" | "env") {
+            parent_command = Some(command.to_owned());
             continue;
         }
         return Some(command.to_owned());
     }
-    schedule.then_some("schedule".to_owned())
+    parent_command
 }
 
 fn canonical_command(command: &str) -> &str {
@@ -235,6 +240,13 @@ fn canonical_schedule_action(action: &str) -> &str {
         "delete" => "remove",
         "uninstall" => "unregister",
         "edit" => "update",
+        other => other,
+    }
+}
+
+fn canonical_env_action(action: &str) -> &str {
+    match action {
+        "ls" => "list",
         other => other,
     }
 }
@@ -335,6 +347,8 @@ pub enum Command {
     Clone(CloneArgs),
     /// Commit already-staged changes without staging additional content.
     Commit(CommitArgs),
+    /// Inspect supported environment variables and their effective values.
+    Env(EnvArgs),
     /// Run a Git command in selected repositories.
     Exec(ExecArgs),
     /// Fetch all remotes with pruning, without merging.
@@ -403,6 +417,7 @@ impl Command {
         match self {
             Self::Branch(_)
             | Self::Capabilities
+            | Self::Env(_)
             | Self::Find(_)
             | Self::Info(_)
             | Self::List(_)
@@ -427,6 +442,27 @@ impl Command {
             | Self::Unstage(_) => true,
         }
     }
+}
+
+/// Environment configuration inspection commands.
+#[derive(Debug, Args)]
+pub struct EnvArgs {
+    #[command(subcommand)]
+    pub command: EnvCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum EnvCommand {
+    /// List supported variables, defaults, and effective values.
+    #[command(visible_alias = "ls")]
+    List(EnvListArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct EnvListArgs {
+    /// Include the description of each supported environment variable.
+    #[arg(short = 'd', long)]
+    pub description: bool,
 }
 
 /// Optional legacy `--json` switch for read-only commands that did not previously expose it.

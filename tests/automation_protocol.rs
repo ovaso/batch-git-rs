@@ -164,7 +164,7 @@ fn capabilities_is_discoverable_through_the_versioned_json_protocol() {
     let commands = receipt["data"]["commands"]
         .as_array()
         .expect("capabilities commands are an array");
-    for command in ["add", "commit", "unstage"] {
+    for command in ["add", "commit", "env", "unstage"] {
         assert!(
             commands.iter().any(|candidate| candidate == command),
             "capabilities must advertise the controlled {command} command"
@@ -175,6 +175,95 @@ fn capabilities_is_discoverable_through_the_versioned_json_protocol() {
     assert_eq!(safety["add_rejects_unresolved_conflicts"], true);
     assert_eq!(safety["commit_rejects_repository_operations"], true);
     assert_eq!(safety["unstage_preserves_working_trees"], true);
+}
+
+#[test]
+fn env_list_exposes_effective_values_through_the_v1_protocol() {
+    let fixture = WorkspaceFixture::new();
+    let state_directory = fixture.workspace.join("env-state");
+    let output = batch_git(&fixture.workspace)
+        .env_remove("BATCH_GIT_SCAN_DEPTH")
+        .env("BATCH_GIT_STATE_DIR", &state_directory)
+        .env("BATCH_GIT_SCHEDULE_LOG", "yes")
+        .env("BATCH_GIT_TZ", "Asia/Shanghai")
+        .env("BATCH_GIT_REMOTE", "origin")
+        .env("CURRENT_FEATURE_BRANCH", "feature/config")
+        .env("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE", "off")
+        .env("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT", "on")
+        .env("BATCH_GIT_PASSTHROUGH_VERBOSE", "false")
+        .args(["--output", "json", "--jobs", "9", "env", "ls"])
+        .output()
+        .expect("run env ls");
+    let receipt = json_output(output);
+    assert_success_receipt(&receipt, "env list");
+    assert!(receipt["workspace"].is_null());
+
+    let variables = receipt["data"]["variables"]
+        .as_array()
+        .expect("environment variables are an array");
+    assert_eq!(variables.len(), 12);
+    let variable = |name: &str| {
+        variables
+            .iter()
+            .find(|variable| variable["name"] == name)
+            .unwrap_or_else(|| panic!("missing environment variable {name}"))
+    };
+
+    assert_eq!(variable("BATCH_GIT_JOBS")["default"], "4");
+    assert_eq!(variable("BATCH_GIT_JOBS")["current"], "9");
+    let canonical_workspace = fixture
+        .workspace
+        .canonicalize()
+        .expect("canonical workspace");
+    assert_eq!(
+        variable("BATCH_GIT_WORKSPACE")["current"],
+        canonical_workspace.to_string_lossy().as_ref()
+    );
+    assert_eq!(
+        variable("BATCH_GIT_STATE_DIR")["current"],
+        state_directory.to_string_lossy().as_ref()
+    );
+    assert_eq!(variable("BATCH_GIT_SCHEDULE_LOG")["current"], "true");
+    assert_eq!(variable("BATCH_GIT_TZ")["current"], "Asia/Shanghai");
+    assert_eq!(variable("BATCH_GIT_REMOTE")["current"], "origin");
+    assert_eq!(
+        variable("CURRENT_FEATURE_BRANCH")["current"],
+        "feature/config"
+    );
+    assert_eq!(
+        variable("BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE")["current"],
+        "false"
+    );
+    assert_eq!(
+        variable("BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT")["current"],
+        "true"
+    );
+    assert_eq!(
+        variable("BATCH_GIT_PASSTHROUGH_VERBOSE")["current"],
+        "false"
+    );
+    assert_eq!(variable("NO_COLOR")["current"], "true");
+    assert!(variables.iter().all(|variable| {
+        variable.get("description").is_none()
+            && variable["default"].is_string()
+            && variable["current"].is_string()
+    }));
+
+    let described = json_output(
+        batch_git(&fixture.workspace)
+            .env("BATCH_GIT_STATE_DIR", &state_directory)
+            .args(["--output", "json", "env", "list", "-d"])
+            .output()
+            .expect("run described env list"),
+    );
+    assert_success_receipt(&described, "env list");
+    assert!(
+        described["data"]["variables"]
+            .as_array()
+            .is_some_and(|variables| variables
+                .iter()
+                .all(|variable| variable["description"].is_string()))
+    );
 }
 
 #[test]

@@ -103,12 +103,19 @@ batch-git status --json
 batch-git info
 batch-git info service-api
 batch-git info services/service-api --json
+batch-git env ls
 ```
 
 - `list`：登记名称、当前分支和默认分支；
 - `branch`：每个仓库的实时当前分支，不访问网络；
 - `status`：工作树状态、变更数量和基于本地引用计算的 upstream 差异；
 - `info`：工作区元数据，或指定仓库的清单与实时 Git 信息。
+- `env ls`：列出支持的环境变量、默认值和本次调用的最终生效值；无需工作区。
+
+`env ls` 默认显示 `VARIABLE`、`DEFAULT` 和 `CURRENT`；增加 `-d` / `--description` 才显示
+`DESCRIPTION`。`CURRENT` 列在兼容颜色的交互终端中显示为绿色，并继续遵循 `NO_COLOR`；
+重定向或管道输出保持纯文本。`--jobs` 是全局 CLI 参数，因此
+`batch-git --jobs 8 env ls` 会把 `BATCH_GIT_JOBS` 的最终值显示为 `8`。
 
 `status` 不列出文件名。查看具体文件时使用：
 
@@ -118,8 +125,9 @@ batch-git -- status --short
 
 旧的 `info`、`list --json`、`find --json`、`status --json`、`branch --json` 和 schedule
 JSON 输出适合已有脚本。新自动化使用统一的全局协议，例如
-`batch-git --output json status`；它不会输出表格或进度条，并会包含协议版本、退出码、
-工作区 revision 和结构化错误。详见[自动化契约](AUTOMATION_CONTRACTS.md)。
+`batch-git --output json status` 或 `batch-git --output json env ls`；它不会输出表格或进度条，
+并会包含协议版本、退出码、结构化错误，以及适用命令的工作区 revision。详见
+[自动化契约](AUTOMATION_CONTRACTS.md)。
 HTTP(S) 远端 URL 中的用户名、密码或 token 会在保存和展示前移除。
 
 ## 5. 更新仓库

@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-08-06
+
+### Added
+
+- 新增只读命令 `batch-git env list`（别名 `env ls`），集中展示支持的环境变量、默认值和本次调用的
+  最终生效值；使用 `-d` / `--description` 时增加说明，文本模式将 `CURRENT` 列在兼容终端中显示为
+  绿色，并支持 v1 JSON / JSONL 与 capabilities 发现。
+
 ### Changed
 
 - 合并默认分支时，`BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` 默认开启，自动刷新并合并远端最新
@@ -12,6 +20,11 @@
   关闭，仅在配置开启时更新当前分支。`--uc`、`--rs` 与各自 `--no-*` 选项始终优先。
 - 移除不区分来源类型的 `BATCH_GIT_MERGE_UPDATE_CURRENT` 与
   `BATCH_GIT_MERGE_REFRESH_SOURCE` 环境变量。
+
+### Fixed
+
+- 文本表格在交互终端中按可用列宽对超长单元格软换行，续行保持原列起点对齐，不再由终端硬换行
+  后落到第一列；ANSI 颜色和 Unicode 宽度计算在换行后仍保持正确。
 
 ## [0.4.2] - 2026-08-06
 
@@ -189,7 +202,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/livenv/batch-git/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/livenv/batch-git/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/livenv/batch-git/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/livenv/batch-git/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/livenv/batch-git/compare/v0.3.0...v0.4.0

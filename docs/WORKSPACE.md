@@ -84,6 +84,19 @@ batch-git info
 配置优先级为：命令行参数 > 环境变量 > 内建默认值。非法值会报错，不会静默
 回退。
 
+使用下面的只读命令可以直接查看支持项及本次调用的最终生效值；它不要求当前目录属于工作区：
+
+```sh
+batch-git env ls
+batch-git env ls -d
+batch-git --output json env list
+```
+
+文本输出默认包含 `VARIABLE`、`DEFAULT`、`CURRENT` 三列；使用 `-d` / `--description` 时才增加
+`DESCRIPTION`。交互终端中的 `CURRENT` 使用绿色显示。最终值中的动态目录会解析为实际路径；
+未显式设置 `BATCH_GIT_WORKSPACE` 时，当前值会显示自动发现的工作区，找不到时显示
+`<not found>`。全局 `--jobs` 会覆盖 `BATCH_GIT_JOBS` 并反映在当前值中。
+
 | 环境变量 | 默认值 | 说明 |
 |---|---:|---|
 | `BATCH_GIT_JOBS` | `4` | 最大并发仓库数，必须大于 `0` |
@@ -97,9 +110,10 @@ batch-git info
 | `BATCH_GIT_MERGE_DEFAULT_REFRESH_SOURCE` | `true` | `merge --default` 时是否 fetch 并合并最新 remote-tracking default 分支 |
 | `BATCH_GIT_MERGE_FEATURE_UPDATE_CURRENT` | `false` | `merge --feature` 时是否先 ff-only 更新当前分支 |
 | `BATCH_GIT_PASSTHROUGH_VERBOSE` | `true` | 全仓库 Git 透传是否展示成功输出 |
-| `NO_COLOR` | 未设置 | 非空时禁用颜色 |
+| `NO_COLOR` | 未设置 | 变量存在时禁用颜色 |
 
-布尔变量接受 `1/0`、`true/false`、`yes/no`、`on/off`，不区分大小写。
+除按“是否存在”解释的 `NO_COLOR` 外，布尔变量接受 `1/0`、`true/false`、`yes/no`、
+`on/off`，不区分大小写。
 
 ## 6. 本地状态文件
 

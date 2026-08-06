@@ -31,6 +31,7 @@ cargo build --locked --release
 ./target/release/batch-git add --help
 ./target/release/batch-git commit --help
 ./target/release/batch-git unstage --help
+./target/release/batch-git env --help
 ./target/release/batch-git schedule --help
 ```
 

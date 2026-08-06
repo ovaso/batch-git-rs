@@ -209,8 +209,8 @@ batch-git --output json schema workspace
 ```
 
 `capabilities` 声明二进制版本、协议版本、输出格式、可用命令、plan/apply 边界和安全属性。
-支持本组命令的二进制会在 `commands` 中列出 `add`、`commit`、`unstage`，并在 `safety` 中声明
-`commit_stages_content=false`、`add_rejects_unresolved_conflicts=true`、
+支持本组命令的二进制会在 `commands` 中列出 `add`、`commit`、`env`、`unstage`，并在
+`safety` 中声明 `commit_stages_content=false`、`add_rejects_unresolved_conflicts=true`、
 `commit_rejects_repository_operations=true` 和 `unstage_preserves_working_trees=true`。
 `schema operation-result` 返回 v1 envelope 的 JSON Schema；`schema workspace` 返回
 `workspace.toml` 输入的 JSON 表示 schema，而不是序列化后补齐默认值的专用格式。因此它接受
@@ -220,12 +220,20 @@ batch-git --output json schema workspace
 
 ## 命令覆盖与旧 JSON
 
-所有公开命令（包括 `scan`、`clone`、`restore`、`add`、`commit`、`unstage`、`fetch`、
+所有公开命令（包括 `env list` / `env ls`、`scan`、`clone`、`restore`、`add`、`commit`、
+`unstage`、`fetch`、
 `sync`、`pull`、`push`、`checkout`、`merge`、`exec`、透传、`forget` 和所有 schedule 子命令）
 支持全局 JSON receipt
 与 JSONL。`status`、`branch` 也提供旧的 `--json` 直接 payload。对 `exec` 和顶层
 `-- <git args>`，batch-git 只提供结构化外壳，风险标记为 `unclassified`；它不会尝试把任意
 Git 参数判断为安全或无副作用。
+
+`env list` 不要求工作区。其 receipt 的 `command` 固定为 `env list`，`data.variables` 按帮助文档
+顺序列出环境变量；每项包含字符串字段 `name`、`default` 和 `current`。只有使用 `-d` /
+`--description` 时才增加字符串字段 `description`。
+`current` 是本次调用的最终生效值，因此会包含全局 `--jobs` 覆盖、自动发现的工作区和展开后的
+平台 state 目录，也可能包含本机绝对路径。非法环境值仍返回退出码 `2`，不会在清单中混入一个
+看似有效的回退值。自动化必须读取这些字段，不应解析文本表格或颜色。
 
 旧 JSON 形状：
 

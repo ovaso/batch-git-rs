@@ -16,7 +16,8 @@ description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行
 ## 默认流程
 
 1. 在目标工作区执行 `batch-git --output json capabilities`，确认当前二进制的协议版本、命令和
-   plan/apply 限制。
+   plan/apply 限制。需要诊断运行配置时，再执行 `batch-git --output json env list` 读取环境变量
+   的最终生效值，不要解析彩色文本表格。
 2. 用 `batch-git --output json info` 和 `batch-git --output json list` 确认工作区根目录与规范
    仓库名。路径存在歧义时设置绝对 `BATCH_GIT_WORKSPACE`。
 3. 在任何本地、远端或调度器写入前后，用 `status --output json`、`branch --output json`，必要时

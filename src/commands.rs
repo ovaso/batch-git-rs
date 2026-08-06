@@ -14,9 +14,9 @@ use serde_json::json;
 
 use crate::automation::{self, AutomationOptions};
 use crate::cli::{
-    CheckoutArgs, Cli, CloneArgs, Command, CommitArgs, ExecArgs, FindArgs, ForgetArgs, InfoArgs,
-    ListArgs, MachineReadableArgs, MergeArgs, PushArgs, RuntimeOptions, ScanArgs, SchemaArgs,
-    SchemaDocument, SyncArgs,
+    CheckoutArgs, Cli, CloneArgs, Command, CommitArgs, EnvArgs, EnvCommand, EnvListArgs, ExecArgs,
+    FindArgs, ForgetArgs, InfoArgs, ListArgs, MachineReadableArgs, MergeArgs, PushArgs,
+    RuntimeOptions, ScanArgs, SchemaArgs, SchemaDocument, SyncArgs,
 };
 use crate::color;
 use crate::git::{
@@ -51,6 +51,7 @@ pub fn dispatch(cli: Cli) -> Result<i32> {
         Command::Add(arguments) => add(arguments, jobs, runtime.verbose, &automation),
         Command::Clone(arguments) => clone_repository(arguments, &automation),
         Command::Commit(arguments) => commit(arguments, jobs, runtime.verbose, &automation),
+        Command::Env(arguments) => environment(arguments, jobs, &automation),
         Command::Scan(arguments) => scan(arguments, jobs, &automation),
         Command::Restore => restore(jobs, runtime.verbose, &automation),
         Command::Fetch => fetch(jobs, runtime.verbose, &automation),
@@ -318,6 +319,7 @@ fn plan_command(command: &Command, jobs: usize, automation: &AutomationOptions) 
         }
         Command::Branch(_)
         | Command::Capabilities
+        | Command::Env(_)
         | Command::Find(_)
         | Command::Info(_)
         | Command::List(_)
@@ -729,7 +731,7 @@ fn capabilities(automation: &AutomationOptions) -> Result<i32> {
         "output_formats": ["text", "json", "jsonl"],
         "schemas": ["operation-result", "workspace"],
         "commands": [
-            "add", "branch", "capabilities", "checkout", "clone", "commit", "exec",
+            "add", "branch", "capabilities", "checkout", "clone", "commit", "env", "exec",
             "fetch", "find", "forget", "info", "list", "merge", "pull", "push",
             "restore", "scan", "schedule", "schema", "status", "sync", "unstage",
             "passthrough"
@@ -766,6 +768,81 @@ fn capabilities(automation: &AutomationOptions) -> Result<i32> {
         println!("plan/apply: workspace revision precondition");
     }
     Ok(0)
+}
+
+/// Show supported environment variables without requiring a workspace manifest.
+fn environment(arguments: EnvArgs, jobs: usize, automation: &AutomationOptions) -> Result<i32> {
+    match arguments.command {
+        EnvCommand::List(arguments) => environment_list(arguments, jobs, automation),
+    }
+}
+
+fn environment_list(
+    arguments: EnvListArgs,
+    jobs: usize,
+    automation: &AutomationOptions,
+) -> Result<i32> {
+    let variables = settings::environment_variables(jobs)?;
+    if automation.is_machine() {
+        let variables = variables
+            .iter()
+            .map(|variable| EnvironmentVariableOutput {
+                name: variable.name,
+                description: arguments.description.then_some(variable.description),
+                default: &variable.default,
+                current: &variable.current,
+            })
+            .collect::<Vec<_>>();
+        automation::emit_data(
+            automation,
+            "env list",
+            None,
+            0,
+            &json!({"variables": variables}),
+        )?;
+    } else {
+        let (headers, rows) = if arguments.description {
+            (
+                vec!["VARIABLE", "DESCRIPTION", "DEFAULT", "CURRENT"],
+                variables
+                    .iter()
+                    .map(|variable| {
+                        vec![
+                            variable.name.to_owned(),
+                            variable.description.to_owned(),
+                            variable.default.clone(),
+                            color::green(&variable.current),
+                        ]
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            (
+                vec!["VARIABLE", "DEFAULT", "CURRENT"],
+                variables
+                    .iter()
+                    .map(|variable| {
+                        vec![
+                            variable.name.to_owned(),
+                            variable.default.clone(),
+                            color::green(&variable.current),
+                        ]
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        };
+        print!("{}", table::render(&headers, &rows));
+    }
+    Ok(0)
+}
+
+#[derive(Serialize)]
+struct EnvironmentVariableOutput<'a> {
+    name: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<&'a str>,
+    default: &'a str,
+    current: &'a str,
 }
 
 /// Print a JSON Schema document. Text mode prints the schema itself for shell-friendly use;

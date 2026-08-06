@@ -22,7 +22,8 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
 - `cli` 解析内建命令，并在显式 `--` 处分离原生 Git 透传。
 - `automation` 定义版本化 JSON/JSONL envelope、结构化顶层错误、request ID、plan/apply
   revision 前置条件和子 Git 进程执行约束。
-- `settings` 统一处理 CLI、环境变量和默认值的优先级。
+- `settings` 统一处理 CLI、环境变量和默认值的优先级；`env list` 复用同一解析路径展示最终生效值，
+  不维护第二份运行配置。
 - `commands` 编排工作区命令；单仓库失败应转为可聚合结果，不能取消其他仓库。
 - `workspace` 负责根目录发现、排他锁和 `workspace.toml` 原子替换。
 - `model` 定义 schema version 1、跨字段校验和可序列化模型。

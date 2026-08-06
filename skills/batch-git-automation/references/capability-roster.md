@@ -22,6 +22,7 @@
 | 能力 | 命令 | 自动化价值 | 安全等级 | agent 使用规则 |
 |---|---|---|---|---|
 | 工作区发现与校验 | `info`、`list` | 确定清单根目录、仓库名和机器可读输入 | 只读 | 所有流程的起点；优先 `--output json`。 |
+| 运行配置发现 | `env list`（别名 `env ls`） | 列出支持的环境变量、默认值和最终生效值 | 只读 | 无需工作区；自动化读取 `data.variables[]`，需要说明时加 `-d`。不要解析绿色文本列；输出可能包含本机绝对路径。 |
 | 运行态盘点 | `status`、`branch`、`find` | 识别 dirty、ahead/behind、当前分支和目标分支覆盖面 | 只读 | 任何本地或远端写操作前后执行。`find --remote` 仅查询已 fetch 的远端引用。 |
 | 全量暂存 | `add [selectors/--match/--all]` | 将选中仓库全部非忽略新增、修改和删除写入 index | 本地 index 写入 | 省略选择器时全工作区；首版无文件 pathspec，拒绝未解决冲突。add 后必须审阅 staged diff。 |
 | 本地提交 | `commit [selection] -m <message>` | 用同一消息提交各仓库已有 index | 本地历史写入、高风险 | 不 implicit add/amend/empty/hook bypass；拒绝 detached、冲突和进行中的 Git operation；hook/签名可导致部分失败。 |
