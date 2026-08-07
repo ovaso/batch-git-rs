@@ -55,7 +55,7 @@
 
 ## 关键保障与边界
 
-- 隐藏的运行期锁 `.batchspace.lock` 串行化会执行 Git 或修改清单的进程。文件会在进程退出后保留，操作系统锁则随进程的文件句柄释放。
+- 隐藏的运行期锁 `.batchspace.lock` 串行化会执行 Git 或修改清单的进程。文件会在进程退出后保留，操作系统锁则随进程的文件句柄释放。v1 中它会先于旧 `.workspace.lock` 获取，以保持与重命名前客户端的互斥。
 - `pull` 为 fast-forward-only；`batch-git` 不会自动 merge、rebase、stash、reset 或清理工作树。
 - `add` 拒绝未解决冲突；`commit` 只提交 index，拒绝 detached HEAD 和进行中的 Git operation；
   `unstage` 只改 index 并保留工作树。capabilities 的 `safety` 会公开

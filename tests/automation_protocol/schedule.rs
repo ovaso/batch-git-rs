@@ -47,6 +47,30 @@ fn native_run_logs_execution_boundaries_and_performance_metadata() {
 }
 
 #[test]
+fn legacy_lock_still_serializes_skip_schedules_during_upgrade() {
+    let fixture = WorkspaceFixture::new();
+    fixture.add_daily_sync_schedule();
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(fixture.workspace.join(".workspace.lock"))
+        .expect("open legacy workspace lock");
+    lock.lock_exclusive().expect("hold legacy workspace lock");
+
+    let output = run(
+        &fixture.workspace,
+        &["--output", "json", "schedule", "run", "nightly-sync"],
+    );
+    FileExt::unlock(&lock).expect("release legacy workspace lock");
+    assert_eq!(output.status.code(), Some(0));
+    let receipt = json_output(output);
+    assert_eq!(receipt["data"]["status"], "skipped");
+    assert_eq!(receipt["data"]["reason_code"], "workspace_locked");
+}
+
+#[test]
 fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
     let fixture = WorkspaceFixture::new();
     fixture.add_daily_sync_schedule();

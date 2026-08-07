@@ -54,7 +54,7 @@ Legacy subcommand `--json` remains for old scripts but is not a unified schema. 
 
 ## Key guarantees and boundaries
 
-- Hidden runtime lock `.batchspace.lock` serializes processes that run Git or modify the manifest. The file remains after exit, while the operating-system lock is released with the process file handle.
+- Hidden runtime lock `.batchspace.lock` serializes processes that run Git or modify the manifest. The file remains after exit, while the operating-system lock is released with the process file handle. During v1 it is acquired before the legacy `.workspace.lock`, preserving mutual exclusion with pre-rename clients.
 - `pull` is fast-forward-only. batch-git never automatically merges, rebases, stashes, resets, or cleans working trees.
 - `add` rejects unresolved conflicts. `commit` commits the index only and rejects detached HEAD and in-progress Git operations. `unstage` changes only the index and preserves the working tree. Capabilities `safety` declares `commit_stages_content=false`, `add_rejects_unresolved_conflicts=true`, `commit_rejects_repository_operations=true`, and `unstage_preserves_working_trees=true`.
 - `push` sends only current branches; only `--set-upstream` creates a remote branch and tracking relationship.

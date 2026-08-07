@@ -536,9 +536,9 @@ batch-git push -u --remote origin
 
 ### 命令看起来一直在等待
 
-会执行 Git 或写入清单的进程使用隐藏的 `.batchspace.lock` 串行化。检查是否已有
+会执行 Git 或写入清单的进程使用隐藏的 `.batchspace.lock`，并在 v1 兼容期同时使用 `.workspace.lock` 串行化。检查是否已有
 batch-git 任务或设置为 `queue` 的定时任务正在运行。
 
-`--timeout` 只限制已经启动的直接 Git 子进程，不限制等待 `.batchspace.lock` 的时间，也不能
+`--timeout` 只限制已经启动的直接 Git 子进程，不限制等待任一工作区锁的时间，也不能
 保证结束 Git 再派生的认证、传输或 helper 进程。若需要避免等待锁，应由调用方设置自己的
 整体进程超时或在调用前协调任务。

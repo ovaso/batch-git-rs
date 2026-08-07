@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 pub const WORKSPACE_FILE: &str = "batchspace.toml";
 /// 串行化工作区写操作的锁文件名。
 pub const LOCK_FILE: &str = ".batchspace.lock";
+/// 仅用于与重命名前版本协调的旧锁文件名。
+pub const LEGACY_LOCK_FILE: &str = ".workspace.lock";
 
 /// 可序列化、可复制的完整工作区声明。
 #[derive(Debug, Clone, Serialize, Deserialize)]

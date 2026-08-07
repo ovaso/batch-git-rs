@@ -73,7 +73,7 @@ changes. Those dynamic facts always come from each repository's `.git` data.
 - Timestamps must be valid RFC 3339.
 - User information is removed from HTTP(S) URLs before writing.
 - Writes use a same-directory temporary file, synchronization, and atomic replacement.
-- Processes that run Git or modify the manifest use the hidden runtime `.batchspace.lock`; it is retained after exit so all processes coordinate on one stable file, while the operating-system lock is released with the file handle.
+- Processes that run Git or modify the manifest use the hidden canonical runtime `.batchspace.lock`; it is retained after exit so all processes coordinate on one stable file, while the operating-system lock is released with the file handle. During v1, they also acquire `.workspace.lock` in a fixed order to remain mutually exclusive with pre-rename clients.
 - The program normalizes TOML formatting and does not promise to preserve hand-written comments or original layout.
 
 The entire `schedules` collection may be omitted, which is equivalent to an empty list. Hand-written
@@ -134,7 +134,7 @@ Except for `NO_COLOR`, which is interpreted by presence, Boolean variables accep
 
 ## 6. Local state files
 
-`.batchspace.lock` lives in the workspace root and serializes potentially conflicting operations. It is a runtime coordination file, not manifest state: batch-git does not delete it after each operation because removing and recreating a lock file introduces a race between concurrent processes.
+`.batchspace.lock` lives in the workspace root and is the canonical runtime coordination file for potentially conflicting operations. It is not manifest state: batch-git does not delete it after each operation because removing and recreating a lock file introduces a race between concurrent processes. v1 also retains and locks `.workspace.lock` after `.batchspace.lock` only for compatibility with pre-rename clients; both are runtime coordination files, not workspace state.
 Schedule registration state and optional logs live in the user state directory, never in the shared
 manifest:
 

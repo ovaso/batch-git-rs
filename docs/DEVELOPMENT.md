@@ -7,7 +7,7 @@
 - `git2/libgit2`: local repository inspection, checkout, remote configuration, and branch configuration; network features are disabled.
 - System Git CLI: add, commit, restore/read-tree unstage, clone, fetch, push, merge, pull, and exact passthrough after `--`.
 - `batchspace.toml`: declarative, portable workspace manifest.
-- `.batchspace.lock`: hidden runtime coordination file that serializes batch-git processes that may modify Git state or the manifest. It remains after a process exits; the operating-system lock is released with the process file handle.
+- `.batchspace.lock`: hidden canonical runtime coordination file that serializes batch-git processes that may modify Git state or the manifest. It remains after a process exits; the operating-system lock is released with the process file handle. v1 also acquires the legacy `.workspace.lock` in a fixed order so upgraded clients remain mutually exclusive with older clients.
 - `automation result v1`: stable protocol for global `--output json|jsonl`; legacy subcommand `--json` is compatibility-only.
 - Rayon: bounded concurrency and stable result order.
 - clap: strict built-in command boundaries and command help.

@@ -570,10 +570,10 @@ batch-git push -u --remote origin
 
 ### A command appears to wait indefinitely
 
-Processes that run Git or write the manifest serialize on the hidden `.batchspace.lock`. Check for another
+Processes that run Git or write the manifest serialize on the hidden `.batchspace.lock` and, during v1 compatibility, `.workspace.lock`. Check for another
 batch-git task or a scheduled job configured with `queue`.
 
-`--timeout` limits only an already-started direct Git child, not the wait for `.batchspace.lock`, and
+`--timeout` limits only an already-started direct Git child, not the wait for either workspace lock, and
 cannot guarantee termination of Git authentication, transport, or helper descendants. Callers that
 must bound lock waits should apply their own whole-process timeout or coordinate tasks before
 invocation.

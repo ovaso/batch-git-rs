@@ -10,12 +10,14 @@ use sha2::{Digest, Sha256};
 use tempfile::NamedTempFile;
 
 use crate::error::{ClassifyResult, ErrorCode, classified};
-use crate::model::{LOCK_FILE, WORKSPACE_FILE, Workspace, now};
+use crate::model::{LEGACY_LOCK_FILE, LOCK_FILE, WORKSPACE_FILE, Workspace, now};
 
 /// 通过持有文件句柄维持的进程级工作区独占锁。
 pub struct WorkspaceLock {
     // 字段无需读取；生命周期结束并关闭文件时操作系统会自动释放锁。
     _file: File,
+    // 在 v1 兼容期保留，防止旧客户端只持有 `.workspace.lock` 时出现锁分裂。
+    _legacy_file: File,
 }
 
 impl WorkspaceLock {
@@ -23,24 +25,20 @@ impl WorkspaceLock {
     pub fn acquire(root: &Path) -> Result<Self> {
         fs::create_dir_all(root)
             .with_context(|| format!("failed to create workspace root {}", root.display()))?;
-        let path = root.join(LOCK_FILE);
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&path)
-            .with_context(|| format!("failed to open {}", path.display()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
-        }
+        let (path, file) = open_lock_file(root, LOCK_FILE)?;
         // fs2 在 Unix 和 Windows 上分别映射到对应的原生文件锁机制。
         file.lock_exclusive()
             .with_context(|| format!("failed to lock {}", path.display()))
             .classify(ErrorCode::WorkspaceLocked)?;
-        Ok(Self { _file: file })
+        let (legacy_path, legacy_file) = open_lock_file(root, LEGACY_LOCK_FILE)?;
+        legacy_file
+            .lock_exclusive()
+            .with_context(|| format!("failed to lock {}", legacy_path.display()))
+            .classify(ErrorCode::WorkspaceLocked)?;
+        Ok(Self {
+            _file: file,
+            _legacy_file: legacy_file,
+        })
     }
 
     /// 非阻塞尝试获取锁；锁被占用时返回 `None` 而不是错误。
@@ -48,27 +46,45 @@ impl WorkspaceLock {
     pub fn try_acquire(root: &Path) -> Result<Option<Self>> {
         fs::create_dir_all(root)
             .with_context(|| format!("failed to create workspace root {}", root.display()))?;
-        let path = root.join(LOCK_FILE);
-        let file = OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&path)
-            .with_context(|| format!("failed to open {}", path.display()))?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
-        }
+        let (path, file) = open_lock_file(root, LOCK_FILE)?;
         match file.try_lock_exclusive() {
-            Ok(()) => Ok(Some(Self { _file: file })),
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(None),
+            Err(error) => {
+                return Err(error)
+                    .with_context(|| format!("failed to lock {}", path.display()))
+                    .classify(ErrorCode::WorkspaceLocked);
+            }
+        }
+        let (legacy_path, legacy_file) = open_lock_file(root, LEGACY_LOCK_FILE)?;
+        match legacy_file.try_lock_exclusive() {
+            Ok(()) => Ok(Some(Self {
+                _file: file,
+                _legacy_file: legacy_file,
+            })),
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => Ok(None),
             Err(error) => Err(error)
-                .with_context(|| format!("failed to lock {}", path.display()))
+                .with_context(|| format!("failed to lock {}", legacy_path.display()))
                 .classify(ErrorCode::WorkspaceLocked),
         }
     }
+}
+
+fn open_lock_file(root: &Path, name: &str) -> Result<(PathBuf, File)> {
+    let path = root.join(name);
+    let file = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .with_context(|| format!("failed to open {}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?;
+    }
+    Ok((path, file))
 }
 
 /// 返回规范化后的当前目录，消除符号链接和相对路径差异。
@@ -284,7 +300,7 @@ fn validate_repository_paths(root: &Path, workspace: &Workspace) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{LOCK_FILE, WorkspaceLock, repository_path};
+    use super::{LEGACY_LOCK_FILE, LOCK_FILE, WorkspaceLock, repository_path};
     use anyhow::Result;
     use tempfile::TempDir;
 
@@ -301,19 +317,23 @@ mod tests {
     }
 
     #[test]
-    fn workspace_lock_uses_the_hidden_batchspace_name_and_keeps_its_inode() -> Result<()> {
+    fn workspace_lock_uses_the_hidden_batchspace_name_and_keeps_compatibility_inode() -> Result<()>
+    {
         let workspace = TempDir::new()?;
         let lock_path = workspace.path().join(LOCK_FILE);
+        let legacy_lock_path = workspace.path().join(LEGACY_LOCK_FILE);
 
         let lock = WorkspaceLock::acquire(workspace.path())?;
         assert_eq!(LOCK_FILE, ".batchspace.lock");
         assert!(lock_path.is_file());
+        assert!(legacy_lock_path.is_file());
 
         drop(lock);
         assert!(
             lock_path.is_file(),
-            "unlocking releases the OS lock but retains the coordination file"
+            "unlocking releases the OS lock but retains the canonical coordination file"
         );
+        assert!(legacy_lock_path.is_file());
         Ok(())
     }
 
