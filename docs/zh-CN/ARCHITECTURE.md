@@ -4,13 +4,13 @@
 
 ## 目标与边界
 
-`batch-git` 协调多个独立 Git 工作树，而不是创建新的 monorepo。`workspace.toml` 保存可复制
+`batch-git` 协调多个独立 Git 工作树，而不是创建新的 monorepo。`batchspace.toml` 保存可复制
 的恢复声明；当前分支、HEAD、工作树变更和远端引用始终从本地 Git 仓库实时读取。
 
 ```text
 CLI / env ──> cli + settings + automation ──> commands / schedule
                                   │
-                     workspace ──┼── model (workspace.toml validation)
+                     workspace ──┼── model (batchspace.toml validation)
                      lock/write  │
                                   ├── git2: inspection, staging facts and local ref operations
                                   └── system Git: add/commit/unstage, merge/pull/push,
@@ -34,7 +34,7 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
   `workspace_commands` 再按 clone、scan、restore、manifest membership 与共享路径/命名不变量拆分；
   `inspect` 只作为 facade，list、status、find、info、branch 各自维护查询数据模型和失败语义。
   单仓库失败应转为可聚合结果，不能取消其他仓库。
-- `workspace` 负责根目录发现、排他锁和 `workspace.toml` 原子替换。
+- `workspace` 负责根目录发现、排他锁和 `batchspace.toml` 原子替换。
 - `model` 定义 schema version 1、跨字段校验和可序列化模型。
 - `git` facade 保持调用路径稳定；`types` 是值对象，`execution` 统一系统 Git 环境隔离、交互和
   timeout，`clone`、`checkout`、`inspect`、`remotes`、`discovery` 分别承担克隆、分支切换、
@@ -92,7 +92,7 @@ commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产�
 reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、filter 或签名后代仍可能存活，
 调用方必须重新检查 HEAD、index 和工作树。
 
-计划不是事务：`--plan` 只读取本地状态并返回 `workspace.toml` digest；`--apply` 在持锁后
+计划不是事务：`--plan` 只读取本地状态并返回 `batchspace.toml` digest；`--apply` 在持锁后
 重新核对该 digest，然后才执行可写命令。add/commit/unstage plan 还公开固定的 index 范围、
 提交消息或工作树保留属性，但不会冻结 HEAD、index 或工作树。它不保存额外账本、不会锁住远端，
 也不承诺跨仓库回滚。
@@ -106,7 +106,7 @@ reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、fil
 
 ## 演进规则
 
-- `workspace.toml` 的 schema 由 `version` 保护；任何破坏性格式调整必须引入迁移和新的主版本。
+- `batchspace.toml` 的 schema 由 `version` 保护；任何破坏性格式调整必须引入迁移和新的主版本。
 - v1 JSON / JSONL 输出和公开 schema 是 automation contract；仅新增可选字段可在同主版本内发布。
 - 新的 scheduler 平台应实现生成、验证、注册、状态和安全反注册，并在目标平台 CI 测试。
 - 新命令必须定义选择器、并发、退出码、部分失败和文档行为，不能只提供 happy path。

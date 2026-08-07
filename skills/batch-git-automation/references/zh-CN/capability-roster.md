@@ -33,7 +33,7 @@
 | 全量撤销暂存 | `unstage [selectors/--match/--all]` | 恢复选中 index，同时保留工作树 | 本地 index 写入 | 首版无文件 pathspec；不移动 HEAD，unborn 使用 read-tree empty；不能撤销 commit。 |
 | 由现有仓库建清单 | `scan [--depth N]` | 将散落多仓库转为可复现工作区 | 清单写入 | 只增补、不删除登记；先 `--plan`，再确认根目录。 |
 | 受控加入仓库 | `clone <url> [directory]` | 单仓库克隆成功后自动登记 | 本地写入 + 网络 | 目标必须是工作区内不存在的相对目录；失败/超时时保留目标供人工检查，不自动递归删除；处理该目录后才能重试。JSONL 也产生完整生命周期，失败事件以请求目录标识仓库。不要在输出中暴露 URL 凭据。 |
-| 缺失仓库恢复 | `restore` | 从清单重建缺失 checkout | 本地写入 + 网络 | 不覆盖已存在目录；失败/超时目标会保留供人工检查；必须从含 `workspace.toml` 的工作区根目录调用。 |
+| 缺失仓库恢复 | `restore` | 从清单重建缺失 checkout | 本地写入 + 网络 | 不覆盖已存在目录；失败/超时目标会保留供人工检查；必须从含 `batchspace.toml` 的工作区根目录调用。 |
 | 元数据维护 | `forget <selector>` | 停止管理一个仓库而保留目录 | 清单写入 | 先 `--plan` 展示精确匹配，再要求确认。 |
 | 无工作树更新 | `fetch` | 更新所有远端引用并 prune | 网络、低风险 | 不 merge、不 checkout；适合自动化前的刷新。 |
 | 无人值守同步 | `sync [selectors/--match/--all]` | `restore + fetch`，保证缺失仓库恢复并更新 refs | 本地写入 + 网络、低风险 | 首选后台操作；不改已有工作树。 |

@@ -19,7 +19,7 @@ capabilities command 字符串或 schedule 行为，也不把现有命令改成 
 - 不重命名、删除或合并现有命令；
 - 不改变 `cd`、`cf`、`cc` 等兼容入口的解析结果；
 - 不改变 plan/apply、选择器、并发、退出码、JSON/JSONL、reason code、capabilities 或 schema；
-- 不为命令分类引入第二份持久化状态，`workspace.toml` 仍是唯一工作区事实来源。
+- 不为命令分类引入第二份持久化状态，`batchspace.toml` 仍是唯一工作区事实来源。
 
 ## 实施状态与后续阶段
 

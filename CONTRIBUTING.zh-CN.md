@@ -23,7 +23,7 @@ release tag 不能替代 PR。版本号与 changelog 变更应先通过 PR 合�
 
 ## 兼容性承诺
 
-在同一主版本内，已文档化的 CLI、`workspace.toml` version 1、旧 `--json` payload、automation
+在同一主版本内，已文档化的 CLI、`batchspace.toml` version 1、旧 `--json` payload、automation
 protocol v1 及公开 schema 只做向后兼容的扩展。破坏性变更必须在 issue/PR 中说明迁移方案，并在
 下一主版本发布。
 

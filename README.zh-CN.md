@@ -7,7 +7,7 @@
 [English](README.md)
 
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
-`workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
+`batchspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
 ## 主要能力
 
@@ -89,7 +89,7 @@ BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 用户前缀下。若 shell 未自动发现该前缀，请按[用户手册](docs/zh-CN/USER_GUIDE.md#2-安装与验证)加载。
 
 默认 feature 集包含 `schedule`，因此普通构建的命令面保持完整。关闭默认 features 只影响当前
-二进制是否提供 `schedule` 命令；`workspace.toml` 仍会解析并保留既有 schedule 声明，避免精简
+二进制是否提供 `schedule` 命令；`batchspace.toml` 仍会解析并保留既有 schedule 声明，避免精简
 构建改写清单时丢失数据。自动化应以 `capabilities.data.commands` 判断当前二进制是否支持调度。
 
 确保安装目录已经加入 `PATH`：
@@ -122,7 +122,7 @@ batch-git commit --match 'service-*' -m 'Update generated clients'
 
 ```sh
 mkdir restored-workspace
-cp workspace.toml restored-workspace/
+cp batchspace.toml restored-workspace/
 cd restored-workspace
 batch-git restore
 batch-git fetch
@@ -193,14 +193,14 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' \
 事件；单仓库 `clone` 也会按此顺序发出一个仓库终态事件。仓库事件保持清单顺序，已先完成的
 后序仓库可能等待前序事件。`--non-interactive` 禁止 Git 提示，`--timeout 5m` 只限制直接启动的
 Git 子进程，不能保证终止其认证或传输后代进程。
-`schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 表示，清单中可省略有默认值的字段。完整字段、
+`schema workspace` 输出的 schema 对应 `batchspace.toml` 的 JSON 表示，清单中可省略有默认值的字段。完整字段、
 兼容策略和安全边界见[自动化契约](docs/zh-CN/AUTOMATION_CONTRACTS.md)；仓库内 skill 提供 agent
 的默认操作流程。
 
 ## 文档
 
 - [用户手册](docs/zh-CN/USER_GUIDE.md)：安装、工作流、命令说明和故障排查；
-- [工作区清单](docs/zh-CN/WORKSPACE.md)：`workspace.toml` 格式、环境变量和状态目录；
+- [工作区清单](docs/zh-CN/WORKSPACE.md)：`batchspace.toml` 格式、环境变量和状态目录；
 - [定时任务](docs/zh-CN/SCHEDULES.md)：声明、验证、注册、日志和平台差异；
 - [开发与发布](docs/zh-CN/DEVELOPMENT.md)：验证命令、实现边界和封版检查；
 - [架构说明](docs/zh-CN/ARCHITECTURE.md)：模块职责、并发、锁与 Git 执行边界；

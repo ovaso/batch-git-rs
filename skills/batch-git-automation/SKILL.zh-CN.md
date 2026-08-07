@@ -1,13 +1,13 @@
 ---
 name: batch-git-automation
-description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行自动化开发与维护。用于发现 batch-git 能力、读取 workspace.toml 工作区状态、使用 JSON receipt 或 JSONL 编排批量暂存、提交和 Git 操作、先 plan 再 apply、协调跨仓库分支/同步/推送，或管理定时同步；当用户提及 batch-git、多仓库 Git、workspace.toml、批量同步、agent/CI 自动化时使用。
+description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行自动化开发与维护。用于发现 batch-git 能力、读取 batchspace.toml 工作区状态、使用 JSON receipt 或 JSONL 编排批量暂存、提交和 Git 操作、先 plan 再 apply、协调跨仓库分支/同步/推送，或管理定时同步；当用户提及 batch-git、多仓库 Git、batchspace.toml、批量同步、agent/CI 自动化时使用。
 ---
 
 # Batch Git 自动化
 
 [English](SKILL.md)
 
-通过 `batch-git` CLI 管理由 `workspace.toml` 声明的多个独立 Git 仓库。将清单视为恢复和
+通过 `batch-git` CLI 管理由 `batchspace.toml` 声明的多个独立 Git 仓库。将清单视为恢复和
 远端配置的事实来源；将各仓库 Git 状态视为实时事实来源。不要安装此 skill、启动守护进程或
 引入 MCP：本 skill 只编排现有 CLI。
 
@@ -37,7 +37,7 @@ description: 在 batch-git 多 Git 仓库工作区中安全、可审计地进行
 请求明确授权再直接执行；不要伪造 revision。
 
 `restore` 特意只把调用时当前目录视为工作区根目录；对它 plan 或 apply 前，必须先进入含有
-`workspace.toml` 的根目录，不能从子仓库目录调用。
+`batchspace.toml` 的根目录，不能从子仓库目录调用。
 
 ## 输出纪律
 

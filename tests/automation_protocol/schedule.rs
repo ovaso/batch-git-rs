@@ -16,7 +16,7 @@ fn invalid_schedule_requests_keep_the_typed_machine_error_code() {
 fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
     let fixture = WorkspaceFixture::new();
     fixture.add_daily_sync_schedule();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
 
     let plan = json_output(run(
         &fixture.workspace,
@@ -58,7 +58,7 @@ fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
 fn native_run_apply_preserves_a_stale_error_detected_after_the_child_acquires_the_lock() {
     let fixture = WorkspaceFixture::new();
     fixture.add_queued_sync_schedule();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
 
     let plan = json_output(run(
         &fixture.workspace,

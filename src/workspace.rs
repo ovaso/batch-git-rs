@@ -200,7 +200,7 @@ pub fn write(root: &Path, workspace: &mut Workspace) -> Result<()> {
         .sort_by(|a, b| a.directory.cmp(&b.directory));
     workspace.validate()?;
     validate_repository_paths(root, workspace)?;
-    let content = toml::to_string_pretty(workspace).context("failed to encode workspace.toml")?;
+    let content = toml::to_string_pretty(workspace).context("failed to encode batchspace.toml")?;
     // 临时文件必须与目标同目录，才能依赖同一文件系统上的原子 rename。
     let mut temporary = NamedTempFile::new_in(root)
         .with_context(|| format!("failed to create temporary file in {}", root.display()))?;

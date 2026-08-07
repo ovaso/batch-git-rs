@@ -1,12 +1,21 @@
-# workspace.toml 与运行时配置
+# batchspace.toml 与运行时配置
 
 [English](../WORKSPACE.md)
 
 ## 1. 清单定位
 
-`workspace.toml` 是工作区的声明式事实载体。普通命令从当前目录向上查找最近的
+`batchspace.toml` 是工作区的声明式事实载体。普通命令从当前目录向上查找最近的
 清单；`BATCH_GIT_WORKSPACE` 可以指定绝对工作区路径。`scan` 和 `restore` 始终以
 当前目录为根目录，避免误修改父目录工作区。
+
+### 从旧文件名迁移
+
+程序不再发现或读取 `workspace.toml`。运行 batch-git 前请显式重命名既有清单；同一工作区中
+不要同时保留两个文件名：
+
+```sh
+mv workspace.toml batchspace.toml
+```
 
 ## 2. 完整示例
 
@@ -71,7 +80,7 @@ all = true
 写入程序序列化时会补齐的默认字段。
 
 当使用 `batch-git --output json --plan …` 时，receipt 中的 `workspace.revision` 是当前
-`workspace.toml` 原始字节的 `sha256:<hex>` 摘要。将它只作为紧随其后的
+`batchspace.toml` 原始字节的 `sha256:<hex>` 摘要。将它只作为紧随其后的
 `--apply --expect-workspace-revision` 前置条件，不要写回清单或把它当作 schema 字段。apply
 会在持锁后重新计算摘要；注释或空白的任何改动也会使该摘要失效。
 

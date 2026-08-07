@@ -7,7 +7,7 @@
 - `git2/libgit2`：本地仓库读取、checkout、远端和分支配置，不启用网络特性；
 - 系统 Git CLI：add、commit、restore/read-tree unstage、clone、fetch、push、merge、pull
   以及 `--` 后的精确透传；
-- `workspace.toml`：声明式、可复制的工作区清单；
+- `batchspace.toml`：声明式、可复制的工作区清单；
 - `.workspace.lock`：串行化可能修改 Git 状态或清单的 batch-git 进程；
 - `automation result v1`：全局 `--output json|jsonl` 的稳定协议；旧子命令 `--json` 只作兼容；
 - Rayon：有界并发和稳定结果顺序；
@@ -97,7 +97,7 @@ GitHub Release。
 - [ ] `Cargo.toml` 版本与 `CHANGELOG.md` 一致；
 - [ ] 格式、测试、Clippy 和 release build 全部通过；
 - [ ] `batch-git --help` 与用户手册一致；
-- [ ] `workspace.toml` 示例可被当前 schema 读取；
+- [ ] `batchspace.toml` 示例可被当前 schema 读取；
 - [ ] macOS/Linux/Windows schedule 限制写明；
 - [ ] 没有在文档中把 `bit` 描述为自动安装的命令；
 - [ ] 已知限制已记录；

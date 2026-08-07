@@ -9,7 +9,7 @@ This repository contains a safety-first Rust CLI. Read `README.md` and
 
 ## Working rules
 
-- Keep `workspace.toml` as the only persistent source of truth for a workspace. Do not introduce a second state file.
+- Keep `batchspace.toml` as the only persistent source of truth for a workspace. Do not introduce a second state file.
 - Do not make `batch-git` implicitly merge, rebase, stash, reset, clean, force-push, or delete repositories.
 - When changing CLI arguments, exit codes, JSON fields, the manifest schema, or schedule behavior, update the help text, both language versions of the relevant user documentation and automation contracts, and both changelogs together.
 - When changing v1 receipts, JSONL events, `reason_code`, `capabilities`, `schema`, or plan/apply semantics, update `skills/batch-git-automation/` and add black-box coverage to `tests/automation_protocol.rs`.

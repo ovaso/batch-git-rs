@@ -18,7 +18,7 @@ behavior, and does not replace flat commands with nested forms such as `workspac
 - Do not rename, remove, or merge existing commands.
 - Do not change how compatibility entry points such as `cd`, `cf`, and `cc` resolve.
 - Do not change plan/apply, selectors, concurrency, exit codes, JSON/JSONL, reason codes, capabilities, or schemas.
-- Do not introduce a second persistent state source for command classification; `workspace.toml` remains the only workspace source of truth.
+- Do not introduce a second persistent state source for command classification; `batchspace.toml` remains the only workspace source of truth.
 
 ## Implementation status and later phases
 

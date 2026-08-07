@@ -80,7 +80,7 @@ pub enum Command {
     /// Checkout a branch wherever it exists.
     #[command(visible_alias = "cc")]
     Checkout(CheckoutArgs),
-    /// Clone one repository and register it in workspace.toml.
+    /// Clone one repository and register it in batchspace.toml.
     Clone(CloneArgs),
     /// Commit already-staged changes without staging additional content.
     Commit(CommitArgs),
@@ -108,9 +108,9 @@ pub enum Command {
     Pull(SyncArgs),
     /// Push the current tracking branch in selected repositories.
     Push(PushArgs),
-    /// Restore missing repositories declared in workspace.toml.
+    /// Restore missing repositories declared in batchspace.toml.
     Restore,
-    /// Scan for repositories and create or extend workspace.toml.
+    /// Scan for repositories and create or extend batchspace.toml.
     Scan(ScanArgs),
     /// Manage scheduled workspace synchronization.
     #[cfg(feature = "schedule")]

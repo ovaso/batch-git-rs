@@ -1,13 +1,13 @@
 ---
 name: batch-git-automation
-description: Safely and audibly automate development and maintenance in batch-git multi-repository Git workspaces. Use for capability discovery, workspace.toml state inspection, JSON receipt or JSONL orchestration of batch staging, commits, and Git operations, plan-before-apply workflows, cross-repository branch/sync/push coordination, or scheduled synchronization when users mention batch-git, multi-repository Git, workspace.toml, batch synchronization, or agent/CI automation.
+description: Safely and audibly automate development and maintenance in batch-git multi-repository Git workspaces. Use for capability discovery, batchspace.toml state inspection, JSON receipt or JSONL orchestration of batch staging, commits, and Git operations, plan-before-apply workflows, cross-repository branch/sync/push coordination, or scheduled synchronization when users mention batch-git, multi-repository Git, batchspace.toml, batch synchronization, or agent/CI automation.
 ---
 
 # Batch Git Automation
 
 [简体中文](SKILL.zh-CN.md)
 
-Use the `batch-git` CLI to manage independent Git repositories declared by `workspace.toml`. Treat
+Use the `batch-git` CLI to manage independent Git repositories declared by `batchspace.toml`. Treat
 the manifest as the source of truth for restoration and remote configuration, and each repository's
 Git state as the live source of truth. Do not install this skill, start a daemon, or introduce MCP;
 this skill only orchestrates the existing CLI.
@@ -30,7 +30,7 @@ For first-workspace `scan` / `clone`, there may be no manifest revision for appl
 plan, request explicit authorization, then run directly; never fabricate a revision.
 
 `restore` intentionally treats the invocation's current directory as the workspace root. Before
-planning or applying it, enter the directory containing `workspace.toml`; do not invoke it from a
+planning or applying it, enter the directory containing `batchspace.toml`; do not invoke it from a
 child repository.
 
 ## Output discipline

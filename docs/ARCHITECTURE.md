@@ -5,13 +5,13 @@
 ## Goals and boundaries
 
 `batch-git` coordinates multiple independent Git working trees; it does not create a monorepo.
-`workspace.toml` stores portable restoration declarations. Current branches, HEAD, working-tree
+`batchspace.toml` stores portable restoration declarations. Current branches, HEAD, working-tree
 changes, and remote references are always read live from local Git repositories.
 
 ```text
 CLI / env ──> cli + settings + automation ──> commands / schedule
                                   │
-                     workspace ──┼── model (workspace.toml validation)
+                     workspace ──┼── model (batchspace.toml validation)
                      lock/write  │
                                   ├── git2: inspection, staging facts and local ref operations
                                   └── system Git: add/commit/unstage, merge/pull/push,
@@ -26,7 +26,7 @@ CLI / env ──> cli + settings + automation ──> commands / schedule
 - The `automation` facade keeps protocol call paths stable. `options` validates output format, request ID, timeout, and plan/apply options. `output` only serializes v1 JSON envelopes, JSONL lifecycles, and workspace revision context. `error` centralizes stable error classification and URL user-info sanitization.
 - `settings` resolves CLI, environment, and default-value precedence. `env list` reuses that path to show effective values instead of maintaining a second runtime configuration.
 - `commands/mod.rs` retains only top-level dispatch, plan/apply revision verification, shared child-process policy, and batch progress. `plan`, `automation_commands`, `remote`, `changes`, `branches`, and `exec` own their respective workflows. `workspace_commands` is split further into clone, scan, restore, manifest membership, and shared path/naming invariants. `inspect` is a facade; list, status, find, info, and branch own their query models and failure semantics. A single-repository failure becomes an aggregate result and must not cancel other repositories.
-- `workspace` discovers roots, owns exclusive locking, and atomically replaces `workspace.toml`.
+- `workspace` discovers roots, owns exclusive locking, and atomically replaces `batchspace.toml`.
 - `model` defines schema version 1, cross-field validation, and serializable models.
 - The `git` facade keeps call paths stable. `types` contains value objects; `execution` centralizes system Git environment isolation, interaction, and timeouts; `clone`, `checkout`, `inspect`, `remotes`, and `discovery` own cloning, branch switching, read-only facts, remote configuration, and working-tree discovery. The command layer still invokes system Git for add/commit/unstage, merge/pull/push, and similar operations through the shared execution policy.
 - The `schedule::commands` facade creates one lightweight `CommandContext` per invocation and centralizes concurrency, output, and revision policy. `declarations`, `execution`, `query`, `native`, and `support` handle manifest declarations, planning/running, read-only queries, native task lifecycle, and pure lookup/rendering rules. `artifact` explicitly generates launchd, systemd user-timer, and Windows Task Scheduler definitions. `registration` isolates native system calls, while `state` stores and validates local registration summaries. Host paths never enter the shared manifest.
@@ -90,7 +90,7 @@ commits already created in earlier repositories are not reset, amended, rebased,
 back. After the direct Git child times out, hook, filter, signing, authentication, or transport
 descendants may still be alive; callers must recheck HEAD, the index, and the working tree.
 
-A plan is not a transaction. `--plan` reads local state and returns the `workspace.toml` digest;
+A plan is not a transaction. `--plan` reads local state and returns the `batchspace.toml` digest;
 `--apply` rechecks that digest after acquiring the lock and only then runs the write operation.
 Add/commit/unstage plans also expose fixed index scope, commit message, or working-tree preservation
 properties, but they do not freeze HEAD, the index, or the working tree. No additional ledger is
@@ -109,7 +109,7 @@ manifest is read and before each repository operation.
 
 ## Evolution rules
 
-- `workspace.toml` schema changes are guarded by `version`; breaking format changes require a migration and a new major version.
+- `batchspace.toml` schema changes are guarded by `version`; breaking format changes require a migration and a new major version.
 - v1 JSON/JSONL output and public schemas are automation contracts. Only new optional fields may ship within the same major version.
 - A new scheduler platform must implement generation, validation, registration, status, and safe unregistration, with CI coverage on the target platform.
 - New commands must define selector, concurrency, exit-code, partial-failure, and documentation behavior, not only a happy path.

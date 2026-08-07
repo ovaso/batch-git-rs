@@ -20,7 +20,7 @@ fn local_change_lifecycle_stages_unstages_and_commits_all_non_ignored_changes() 
     git(&repository, ["add", ".gitignore", "DELETE_ME.md"]);
     git(&repository, ["commit", "-m", "prepare staging fixture"]);
 
-    let manifest_path = workspace.path().join("workspace.toml");
+    let manifest_path = workspace.path().join("batchspace.toml");
     let manifest_before = fs::read(&manifest_path).unwrap();
     let head_before = git_output(&repository, ["rev-parse", "HEAD"]);
     fs::write(repository.join("README.md"), "modified in working tree\n").unwrap();

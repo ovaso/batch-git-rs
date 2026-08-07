@@ -13,7 +13,7 @@ use crate::model::{ScheduleAction, ScheduleOverlap, ScheduleRecord, ScheduleScop
 use crate::schedule::state::load_state;
 use crate::workspace::{self, WorkspaceLock};
 
-/// Validate and append one schedule declaration to workspace.toml.
+/// Validate and append one schedule declaration to batchspace.toml.
 pub(super) fn add(arguments: ScheduleAddArgs, context: &CommandContext<'_>) -> Result<i32> {
     let root = workspace::find_root()?;
     let _lock = WorkspaceLock::acquire(&root)?;

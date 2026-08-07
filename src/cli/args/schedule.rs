@@ -8,7 +8,7 @@ pub struct ScheduleArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum ScheduleCommand {
-    /// Add a schedule declaration to workspace.toml.
+    /// Add a schedule declaration to batchspace.toml.
     #[command(visible_alias = "create")]
     Add(ScheduleAddArgs),
     /// Validate a schedule and the selected platform.
@@ -24,7 +24,7 @@ pub enum ScheduleCommand {
     /// Create or update a native scheduler task.
     #[command(visible_alias = "install")]
     Register(ScheduleRegisterArgs),
-    /// Remove a schedule declaration from workspace.toml.
+    /// Remove a schedule declaration from batchspace.toml.
     #[command(visible_alias = "delete")]
     Remove(ScheduleRemoveArgs),
     /// Run a declared schedule immediately.

@@ -115,7 +115,7 @@ fn git_ref_exists(git_directory: &Path, reference: &str) -> bool {
 }
 
 fn set_default_branch(workspace: &Path, repository_name: &str, default_branch: &str) {
-    let manifest_path = workspace.join("workspace.toml");
+    let manifest_path = workspace.join("batchspace.toml");
     let mut manifest: toml::Value =
         toml::from_str(&fs::read_to_string(&manifest_path).expect("read workspace manifest"))
             .expect("parse workspace manifest");

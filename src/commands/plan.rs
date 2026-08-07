@@ -512,9 +512,9 @@ fn render_plan(
 ) -> Result<i32> {
     let apply_available = revision.is_some();
     let apply_note = if apply_available {
-        "Apply rechecks workspace.toml only; it does not reserve remote or Git state."
+        "Apply rechecks batchspace.toml only; it does not reserve remote or Git state."
     } else {
-        "No workspace.toml revision exists yet; request explicit approval, then run the operation without --apply."
+        "No batchspace.toml revision exists yet; request explicit approval, then run the operation without --apply."
     };
     let mut data = json!({
         "mode": "plan",

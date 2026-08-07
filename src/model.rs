@@ -1,4 +1,4 @@
-//! Portable `workspace.toml` data model and validation.
+//! Portable `batchspace.toml` data model and validation.
 
 use std::collections::HashSet;
 use std::path::{Component, Path};
@@ -8,7 +8,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 /// 工作区清单的固定文件名。
-pub const WORKSPACE_FILE: &str = "workspace.toml";
+pub const WORKSPACE_FILE: &str = "batchspace.toml";
 /// 串行化工作区写操作的锁文件名。
 pub const LOCK_FILE: &str = ".workspace.lock";
 

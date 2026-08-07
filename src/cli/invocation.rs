@@ -21,7 +21,7 @@ pub struct RuntimeOptions {
     pub plan: bool,
     /// 按计划前置条件执行操作。
     pub apply: bool,
-    /// apply 必须匹配的 workspace.toml digest。
+    /// apply 必须匹配的 batchspace.toml digest。
     pub expected_workspace_revision: Option<String>,
 }
 

@@ -1,13 +1,22 @@
-# workspace.toml and Runtime Configuration
+# batchspace.toml and Runtime Configuration
 
 [简体中文](zh-CN/WORKSPACE.md)
 
 ## 1. Manifest discovery
 
-`workspace.toml` is the declarative source of truth for a workspace. Normal commands search upward
+`batchspace.toml` is the declarative source of truth for a workspace. Normal commands search upward
 from the current directory for the nearest manifest. `BATCH_GIT_WORKSPACE` can name an absolute
 workspace path. `scan` and `restore` always use the current directory as their root to avoid
 modifying a parent workspace accidentally.
+
+### Migrating from the legacy filename
+
+`workspace.toml` is no longer discovered or read. Rename an existing manifest explicitly before
+running batch-git; do not keep both filenames in the same workspace:
+
+```sh
+mv workspace.toml batchspace.toml
+```
 
 ## 2. Complete example
 
@@ -73,7 +82,7 @@ The schema returned by `schema workspace` describes this input form rather than 
 defaulted fields emitted by the serializer.
 
 For `batch-git --output json --plan …`, the receipt's `workspace.revision` is a `sha256:<hex>` digest
-of the exact `workspace.toml` bytes. Use it only as the precondition for the immediately following
+of the exact `batchspace.toml` bytes. Use it only as the precondition for the immediately following
 `--apply --expect-workspace-revision`; do not write it into the manifest or treat it as a schema
 field. Apply recomputes the digest after acquiring the lock. Any comment or whitespace change also
 invalidates the digest.

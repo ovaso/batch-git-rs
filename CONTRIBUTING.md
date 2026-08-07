@@ -24,7 +24,7 @@ commit. A manual Release workflow run is only a retry mechanism for an existing 
 
 ## Compatibility commitment
 
-Within the same major version, documented CLI behavior, `workspace.toml` version 1, legacy `--json` payloads, automation protocol v1, and public schemas only receive backward-compatible extensions. Breaking changes must include a migration plan in the issue or pull request and ship in the next major version.
+Within the same major version, documented CLI behavior, `batchspace.toml` version 1, legacy `--json` payloads, automation protocol v1, and public schemas only receive backward-compatible extensions. Breaking changes must include a migration plan in the issue or pull request and ship in the next major version.
 
 ## Review priorities
 
