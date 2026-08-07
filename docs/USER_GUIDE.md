@@ -482,7 +482,7 @@ Git data.
 
 Multi-repository tasks use bounded concurrency but always report results in manifest order. One
 repository failure does not cancel the others. Concurrency precedence is
-`--jobs` > `BATCH_GIT_JOBS` > `4`.
+`--jobs` > `BATCH_GIT_JOBS` > available logical CPU count (falling back to `1` when unavailable).
 
 In interactive terminals, clone, restore, and fetch show dynamic progress. Redirected output and CI
 fall back to stable tables. Color control codes are disabled when `NO_COLOR` is set, `TERM=dumb`, or
@@ -570,10 +570,10 @@ batch-git push -u --remote origin
 
 ### A command appears to wait indefinitely
 
-Processes that run Git or write the manifest serialize on `.workspace.lock`. Check for another
+Processes that run Git or write the manifest serialize on the hidden `.batchspace.lock` and, during v1 compatibility, `.workspace.lock`. Check for another
 batch-git task or a scheduled job configured with `queue`.
 
-`--timeout` limits only an already-started direct Git child, not the wait for `.workspace.lock`, and
+`--timeout` limits only an already-started direct Git child, not the wait for either workspace lock, and
 cannot guarantee termination of Git authentication, transport, or helper descendants. Callers that
 must bound lock waits should apply their own whole-process timeout or coordinate tasks before
 invocation.

@@ -5,6 +5,14 @@
 本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
 [语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
+## [Unreleased]
+
+### Changed
+
+- 将 `BATCH_GIT_JOBS` 默认值从固定上限改为系统可用的逻辑 CPU 数；无法探测时安全回退为 `1`。
+- 将 `.batchspace.lock` 设为隐藏的规范运行期工作区锁。锁文件会在使用后保留；文件句柄关闭时只释放操作系统锁，从而避免并发进程间删除并重建锁文件的竞态。v1 还会在规范锁之后获取旧 `.workspace.lock`，使更名前后的客户端保持互斥。
+- 新生成的清单时间与已启用日志的定时任务现在使用带数值 UTC 偏移的本地 RFC 3339 时间（例如 `+08:00`）。定时日志还会在两个日志流中写入开始/结束时间、毫秒级耗时、动作、并发数和子进程退出码。launchd 与 systemd 的已启用日志定义现在和 Windows 一样使用 `native-run` 启动器，因此三个平台的日志格式一致。
+
 ## [1.0.0] - 2026-08-07
 
 ### Changed

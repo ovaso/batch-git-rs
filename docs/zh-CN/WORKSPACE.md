@@ -21,16 +21,16 @@ mv workspace.toml batchspace.toml
 
 ```toml
 version = 1
-created_at = "2026-07-28T12:00:00Z"
-updated_at = "2026-07-29T09:30:00Z"
+created_at = "2026-07-28T20:00:00+08:00"
+updated_at = "2026-07-29T17:30:00+08:00"
 
 [[repositories]]
 name = "service-api"
 directory = "services/service-api"
 default_branch = "main"
 primary_remote = "origin"
-created_at = "2026-07-28T12:10:00Z"
-synced_at = "2026-07-29T08:30:00Z"
+created_at = "2026-07-28T20:10:00+08:00"
+synced_at = "2026-07-29T16:30:00+08:00"
 
 [[repositories.remotes]]
 name = "origin"
@@ -56,8 +56,8 @@ all = true
 | `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..`；真实路径也不得经 symlink 解析到工作区外 |
 | `default_branch` | 是 | `checkout --default` 的目标分支，也是 `merge --default` 的源分支 |
 | `primary_remote` | 是 | 主远端名称，必须存在于 `remotes` 中；缺省按 `origin` 读取 |
-| `created_at` | 是 | RFC 3339 时间 |
-| `synced_at` | 否 | 最近一次成功同步时间 |
+| `created_at` | 是 | 使用带数值 UTC 偏移的本地时区生成的 RFC 3339 时间，例如 `+08:00`；既有 UTC（`Z`）值仍然有效。 |
+| `synced_at` | 否 | 使用带数值 UTC 偏移的本地时区生成的最近一次成功同步时间 |
 | `remotes` | 是 | 至少一个命名远端 |
 | `fetch_url` | 是 | fetch URL |
 | `push_url` | 否 | 独立 push URL；省略或等于 `fetch_url` 时清除仓库中的独立 push URL |
@@ -72,7 +72,7 @@ all = true
 - 时间必须是合法 RFC 3339；
 - HTTP(S) URL 中的用户信息在写入前移除；
 - 写入采用同目录临时文件、同步和原子替换；
-- 会执行 Git 或修改清单的进程使用 `.workspace.lock`；
+- 会执行 Git 或修改清单的进程使用隐藏的规范运行期 `.batchspace.lock`；进程退出后文件保留，所有进程因而协调同一个稳定文件；操作系统锁会随文件句柄释放；在 v1 中还会按固定顺序获取 `.workspace.lock`，以继续与重命名前客户端保持互斥；
 - 程序会规范化 TOML 格式，不保证保留手写注释和原始排版。
 
 `schedules` 可以整体省略，等同于空列表。手写 schedule 时也可省略有默认值的 `enabled`、
@@ -110,7 +110,7 @@ batch-git --output json env list
 
 | 环境变量 | 默认值 | 说明 |
 |---|---:|---|
-| `BATCH_GIT_JOBS` | `4` | 最大并发仓库数，必须大于 `0` |
+| `BATCH_GIT_JOBS` | 可用逻辑 CPU 数（探测失败时为 `1`） | 最大并发仓库数，必须大于 `0` |
 | `BATCH_GIT_SCAN_DEPTH` | `1` | `scan` 默认扫描深度，必须大于 `0` |
 | `BATCH_GIT_WORKSPACE` | 未设置 | 普通命令使用的绝对工作区路径 |
 | `BATCH_GIT_STATE_DIR` | 平台用户 state 目录 | schedule 注册状态和日志根目录 |
@@ -128,7 +128,7 @@ batch-git --output json env list
 
 ## 6. 本地状态文件
 
-`.workspace.lock` 位于工作区根目录，用于串行化可能冲突的操作。schedule 的注册
+`.batchspace.lock` 位于工作区根目录，是串行化可能冲突操作的规范运行期协调文件。它不是清单状态：batch-git 不会在每次操作完成后删除它，因为删除并重建锁文件会在并发进程间引入竞态。v1 还会在 `.batchspace.lock` 之后保留并锁定 `.workspace.lock`，仅用于与重命名前客户端兼容；两者都不是工作区状态。schedule 的注册
 状态和可选日志位于用户 state 目录，不写入共享清单：
 
 - 显式设置：`BATCH_GIT_STATE_DIR`；

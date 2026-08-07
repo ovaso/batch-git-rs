@@ -137,7 +137,13 @@ fn env_list_exposes_effective_values_through_the_v1_protocol() {
             .unwrap_or_else(|| panic!("missing environment variable {name}"))
     };
 
-    assert_eq!(variable("BATCH_GIT_JOBS")["default"], "4");
+    assert_eq!(
+        variable("BATCH_GIT_JOBS")["default"],
+        std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(1)
+            .to_string()
+    );
     assert_eq!(variable("BATCH_GIT_JOBS")["current"], "9");
     let canonical_workspace = fixture
         .workspace

@@ -48,11 +48,21 @@ pub(super) fn build(context: ArtifactContext<'_>) -> Result<NativeArtifact> {
             xml_escape(timezone)
         )
     });
+    let command_arguments = if log_enabled {
+        format!(
+            "<string>schedule</string><string>native-run</string><string>{}</string><string>--log</string>",
+            xml_escape(&schedule.name)
+        )
+    } else {
+        format!(
+            "<string>schedule</string><string>run</string><string>{}</string>",
+            xml_escape(&schedule.name)
+        )
+    };
     let content = format!(
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>ProgramArguments</key><array><string>{}</string><string>schedule</string><string>run</string><string>{}</string></array><key>EnvironmentVariables</key><dict><key>BATCH_GIT_WORKSPACE</key><string>{}</string><key>NO_COLOR</key><string>1</string>{timezone_environment}</dict>{}<key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string></dict></plist>\n",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n<plist version=\"1.0\"><dict><key>Label</key><string>{}</string><key>ProgramArguments</key><array><string>{}</string>{command_arguments}</array><key>EnvironmentVariables</key><dict><key>BATCH_GIT_WORKSPACE</key><string>{}</string><key>NO_COLOR</key><string>1</string>{timezone_environment}</dict>{}<key>StandardOutPath</key><string>{}</string><key>StandardErrorPath</key><string>{}</string></dict></plist>\n",
         xml_escape(&task_id),
         xml_escape(&executable.display().to_string()),
-        xml_escape(&schedule.name),
         xml_escape(&root.display().to_string()),
         trigger,
         xml_escape(

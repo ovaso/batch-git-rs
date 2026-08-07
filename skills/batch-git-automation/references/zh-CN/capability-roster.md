@@ -51,11 +51,11 @@
   或 `--all`；省略选择器时默认工作区全量。暂存三命令首版不接受文件 pathspec。
 - `exec` 需要至少一个精确选择器或 `--match`；全量透传改用 `batch-git -- <git args>`。
 - `find --repo` 只根据规范仓库名称过滤。通配符只支持 `*`，并且大小写敏感。
-- 并发优先级为 `--jobs`、`BATCH_GIT_JOBS`、默认 `4`。即使输出稳定排序，任何并行写入仍可能造成多个仓库同时改变。
+- 并发优先级为 `--jobs`、`BATCH_GIT_JOBS`、可用逻辑 CPU 数（无法探测时为 `1`）。即使输出稳定排序，任何并行写入仍可能造成多个仓库同时改变。
 
 ## 关键保障与边界
 
-- 工作区锁 `.workspace.lock` 串行化会执行 Git 或修改清单的进程。
+- 隐藏的运行期锁 `.batchspace.lock` 串行化会执行 Git 或修改清单的进程。文件会在进程退出后保留，操作系统锁则随进程的文件句柄释放。v1 中它会先于旧 `.workspace.lock` 获取，以保持与重命名前客户端的互斥。
 - `pull` 为 fast-forward-only；`batch-git` 不会自动 merge、rebase、stash、reset 或清理工作树。
 - `add` 拒绝未解决冲突；`commit` 只提交 index，拒绝 detached HEAD 和进行中的 Git operation；
   `unstage` 只改 index 并保留工作树。capabilities 的 `safety` 会公开

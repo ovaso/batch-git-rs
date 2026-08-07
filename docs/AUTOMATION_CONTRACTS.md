@@ -40,7 +40,11 @@ results must not assume captured output is complete.
 
 Registered native schedules enter through the hidden `schedule native-run` action, which always
 passes `--non-interactive` to the actual `schedule run` child. Authentication that depends on terminal
-prompts is unsupported.
+prompts is unsupported. When registration enables schedule logging, each log stream also receives
+human-oriented `started` and final `finished` / `failed` boundary records with local-time RFC 3339
+timestamps including a numeric UTC offset, duration, action, jobs, and exit code. These text logs
+are diagnostics, not a machine protocol;
+automation must continue to decide from JSON receipts and process exit codes.
 
 Legacy subcommand `--json` preserves its old top-level shape: for example, `list --json` is an object
 and `schedule list --json` is an array. It exists only for compatibility; new callers should use
@@ -271,6 +275,8 @@ lists variables in help order. Each item has string fields `name`, `default`, an
 invocation, including global `--jobs`, auto-discovered workspace, expanded platform state directory,
 and possibly host absolute paths. Invalid environment values still return exit code `2` rather than a
 plausible fallback. Automation must read these fields instead of parsing text tables or color.
+When `BATCH_GIT_JOBS` is unset, its dynamic `default` is the current system's available logical CPU
+count, with `1` as the fallback when it cannot be determined.
 
 Legacy JSON shapes:
 

@@ -33,7 +33,10 @@ helper 进程；收到 timeout 结果后，这些后代进程仍可能存活。
 但只保留输出开头和结尾，并在中间插入 `[batch-git: output truncated]`。机器 receipt 不包含原始
 Git 输出；文本详细模式或调试 per-repository 结果的消费者不得假定输出完整。
 已注册的原生 schedule 通过隐藏的 `schedule native-run` 入口启动时，也会无条件向其实际
-`schedule run` child 传递 `--non-interactive`，不支持依赖终端提示的认证流程。
+`schedule run` child 传递 `--non-interactive`，不支持依赖终端提示的认证流程。注册时启用
+schedule 日志后，每个日志流还会写入面向人工诊断的 `started` 以及最终 `finished` / `failed`
+边界记录，包含带数值 UTC 偏移的本地 RFC 3339 时间、耗时、动作、并发数和退出码。这些文本日志不是机器协议；自动化仍必须
+以 JSON receipt 和进程退出码为准。
 
 旧的子命令 `--json` 仍保持原有顶层形状，例如 `list --json` 是对象、`schedule list --json`
 是数组。它仅用于兼容现有调用；新调用应使用全局 `--output json`。二者同时出现时，
@@ -247,6 +250,7 @@ Git 参数判断为安全或无副作用。
 `current` 是本次调用的最终生效值，因此会包含全局 `--jobs` 覆盖、自动发现的工作区和展开后的
 平台 state 目录，也可能包含本机绝对路径。非法环境值仍返回退出码 `2`，不会在清单中混入一个
 看似有效的回退值。自动化必须读取这些字段，不应解析文本表格或颜色。
+未设置 `BATCH_GIT_JOBS` 时，其动态 `default` 为当前系统可用的逻辑 CPU 数；无法探测时回退为 `1`。
 
 旧 JSON 形状：
 

@@ -13,6 +13,78 @@ fn invalid_schedule_requests_keep_the_typed_machine_error_code() {
 }
 
 #[test]
+fn native_run_logs_execution_boundaries_and_performance_metadata() {
+    let fixture = WorkspaceFixture::new();
+    fixture.add_daily_sync_schedule();
+    let state_directory = fixture.workspace.join("native-run-log-state");
+
+    let output = batch_git(&fixture.workspace)
+        .env("BATCH_GIT_STATE_DIR", &state_directory)
+        .args(["schedule", "native-run", "nightly-sync", "--log"])
+        .output()
+        .expect("run logged native schedule");
+    assert_eq!(output.status.code(), Some(0));
+
+    let logs_root = state_directory.join("logs");
+    let workspace_log_directory = fs::read_dir(&logs_root)
+        .expect("read log root")
+        .next()
+        .expect("one workspace log directory")
+        .expect("read workspace log directory")
+        .path()
+        .join("nightly-sync");
+    for log_name in ["stdout.log", "stderr.log"] {
+        let log =
+            fs::read_to_string(workspace_log_directory.join(log_name)).expect("read schedule log");
+        assert!(log.contains("event=started"));
+        assert!(log.contains("action=sync"));
+        assert!(log.contains("started_at="));
+        assert!(log.contains("event=finished"));
+        assert!(log.contains("finished_at="));
+        assert!(log.contains("duration_ms="));
+        assert!(log.contains("exit_code=0"));
+        for field in ["started_at", "finished_at"] {
+            let timestamp = log
+                .split_whitespace()
+                .find_map(|entry| entry.strip_prefix(&format!("{field}=")))
+                .expect("log includes timestamp field");
+            assert!(chrono::DateTime::parse_from_rfc3339(timestamp).is_ok());
+            assert!(
+                timestamp
+                    .as_bytes()
+                    .get(timestamp.len().saturating_sub(6))
+                    .is_some_and(|sign| matches!(sign, b'+' | b'-')),
+                "{field} must use a numeric local UTC offset: {timestamp}"
+            );
+        }
+    }
+}
+
+#[test]
+fn legacy_lock_still_serializes_skip_schedules_during_upgrade() {
+    let fixture = WorkspaceFixture::new();
+    fixture.add_daily_sync_schedule();
+    let lock = OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(fixture.workspace.join(".workspace.lock"))
+        .expect("open legacy workspace lock");
+    lock.lock_exclusive().expect("hold legacy workspace lock");
+
+    let output = run(
+        &fixture.workspace,
+        &["--output", "json", "schedule", "run", "nightly-sync"],
+    );
+    FileExt::unlock(&lock).expect("release legacy workspace lock");
+    assert_eq!(output.status.code(), Some(0));
+    let receipt = json_output(output);
+    assert_eq!(receipt["data"]["status"], "skipped");
+    assert_eq!(receipt["data"]["reason_code"], "workspace_locked");
+}
+
+#[test]
 fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
     let fixture = WorkspaceFixture::new();
     fixture.add_daily_sync_schedule();
@@ -74,7 +146,7 @@ fn native_run_apply_preserves_a_stale_error_detected_after_the_child_acquires_th
         .truncate(false)
         .read(true)
         .write(true)
-        .open(fixture.workspace.join(".workspace.lock"))
+        .open(fixture.workspace.join(".batchspace.lock"))
         .expect("open workspace lock");
     lock.lock_exclusive().expect("hold workspace lock");
 

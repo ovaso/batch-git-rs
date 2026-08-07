@@ -56,7 +56,7 @@ to carry context. Natural-language changes or incidental words such as `lock`, `
 
 ## Consistency and side effects
 
-Every workflow that may run Git or write the manifest uses the workspace `.workspace.lock`.
+Every workflow that may run Git or write the manifest first uses the hidden workspace `.batchspace.lock`, then the legacy `.workspace.lock` in the same fixed order. The compatibility lock prevents upgraded and pre-rename clients from splitting coordination during v1.
 Manifest writes go to a same-directory temporary file, are synchronized, and then atomically
 replace the destination. Batch commands are not transactions across repositories: each repository
 completes or fails independently, and the final report preserves the distinction between success,
@@ -85,7 +85,7 @@ defaults apply only to their respective modes; explicit CLI options always win.
 Commit obeys repository hooks, identity, and signing configuration, which may have local or external
 side effects that batch-git cannot classify. Per-repository Git index/ref locks and the workspace
 lock reduce concurrency conflicts, but native Git invoked outside batch-git does not honor
-`.workspace.lock`. Batch commands are non-transactional: if later repositories fail or time out,
+`.batchspace.lock` and the v1 compatibility `.workspace.lock`. Batch commands are non-transactional: if later repositories fail or time out,
 commits already created in earlier repositories are not reset, amended, rebased, or otherwise rolled
 back. After the direct Git child times out, hook, filter, signing, authentication, or transport
 descendants may still be alive; callers must recheck HEAD, the index, and the working tree.

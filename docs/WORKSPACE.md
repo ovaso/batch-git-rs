@@ -22,16 +22,16 @@ mv workspace.toml batchspace.toml
 
 ```toml
 version = 1
-created_at = "2026-07-28T12:00:00Z"
-updated_at = "2026-07-29T09:30:00Z"
+created_at = "2026-07-28T20:00:00+08:00"
+updated_at = "2026-07-29T17:30:00+08:00"
 
 [[repositories]]
 name = "service-api"
 directory = "services/service-api"
 default_branch = "main"
 primary_remote = "origin"
-created_at = "2026-07-28T12:10:00Z"
-synced_at = "2026-07-29T08:30:00Z"
+created_at = "2026-07-28T20:10:00+08:00"
+synced_at = "2026-07-29T16:30:00+08:00"
 
 [[repositories.remotes]]
 name = "origin"
@@ -57,8 +57,8 @@ all = true
 | `directory` | Yes | Unique workspace-relative directory. Absolute paths, `.` and `..` are forbidden, and the real path must not resolve outside the workspace through a symlink. |
 | `default_branch` | Yes | Target of `checkout --default` and source branch for `merge --default`. |
 | `primary_remote` | Yes | Primary remote name; must exist in `remotes`. Discovery defaults to `origin`. |
-| `created_at` | Yes | RFC 3339 timestamp. |
-| `synced_at` | No | Most recent successful synchronization time. |
+| `created_at` | Yes | RFC 3339 timestamp generated in the local timezone with its numeric UTC offset, for example `+08:00`. Existing UTC (`Z`) values remain valid. |
+| `synced_at` | No | Most recent successful synchronization time, generated in the local timezone with its numeric UTC offset. |
 | `remotes` | Yes | At least one named remote. |
 | `fetch_url` | Yes | Fetch URL. |
 | `push_url` | No | Separate push URL. Omitting it, or setting it equal to `fetch_url`, clears a separate push URL in the repository. |
@@ -73,7 +73,7 @@ changes. Those dynamic facts always come from each repository's `.git` data.
 - Timestamps must be valid RFC 3339.
 - User information is removed from HTTP(S) URLs before writing.
 - Writes use a same-directory temporary file, synchronization, and atomic replacement.
-- Processes that run Git or modify the manifest use `.workspace.lock`.
+- Processes that run Git or modify the manifest use the hidden canonical runtime `.batchspace.lock`; it is retained after exit so all processes coordinate on one stable file, while the operating-system lock is released with the file handle. During v1, they also acquire `.workspace.lock` in a fixed order to remain mutually exclusive with pre-rename clients.
 - The program normalizes TOML formatting and does not promise to preserve hand-written comments or original layout.
 
 The entire `schedules` collection may be omitted, which is equivalent to an empty list. Hand-written
@@ -116,7 +116,7 @@ reflected in the effective value.
 
 | Environment variable | Default | Description |
 |---|---:|---|
-| `BATCH_GIT_JOBS` | `4` | Maximum concurrent repositories; must be greater than `0`. |
+| `BATCH_GIT_JOBS` | Available logical CPU count (falls back to `1`) | Maximum concurrent repositories; must be greater than `0`. |
 | `BATCH_GIT_SCAN_DEPTH` | `1` | Default scan depth; must be greater than `0`. |
 | `BATCH_GIT_WORKSPACE` | Unset | Absolute workspace path used by normal commands. |
 | `BATCH_GIT_STATE_DIR` | Platform user state directory | Root for schedule registration state and logs. |
@@ -134,7 +134,7 @@ Except for `NO_COLOR`, which is interpreted by presence, Boolean variables accep
 
 ## 6. Local state files
 
-`.workspace.lock` lives in the workspace root and serializes potentially conflicting operations.
+`.batchspace.lock` lives in the workspace root and is the canonical runtime coordination file for potentially conflicting operations. It is not manifest state: batch-git does not delete it after each operation because removing and recreating a lock file introduces a race between concurrent processes. v1 also retains and locks `.workspace.lock` after `.batchspace.lock` only for compatibility with pre-rename clients; both are runtime coordination files, not workspace state.
 Schedule registration state and optional logs live in the user state directory, never in the shared
 manifest:
 

@@ -451,7 +451,7 @@ batch-git forget services/legacy
 ## 10. 并发、输出和颜色
 
 多仓库任务使用有上限的并发，但结果始终按清单顺序输出。单仓库失败不会取消
-其他仓库。并发数优先级为：`--jobs` > `BATCH_GIT_JOBS` > `4`。
+其他仓库。并发数优先级为：`--jobs` > `BATCH_GIT_JOBS` > 可用逻辑 CPU 数（无法探测时为 `1`）。
 
 交互终端中的 clone、restore 和 fetch 会显示动态进度；重定向或 CI 中自动退化为
 稳定表格。设置 `NO_COLOR`、`TERM=dumb`，或将输出接入管道时，不输出颜色控制码。
@@ -536,9 +536,9 @@ batch-git push -u --remote origin
 
 ### 命令看起来一直在等待
 
-会执行 Git 或写入清单的进程使用 `.workspace.lock` 串行化。检查是否已有
+会执行 Git 或写入清单的进程使用隐藏的 `.batchspace.lock`，并在 v1 兼容期同时使用 `.workspace.lock` 串行化。检查是否已有
 batch-git 任务或设置为 `queue` 的定时任务正在运行。
 
-`--timeout` 只限制已经启动的直接 Git 子进程，不限制等待 `.workspace.lock` 的时间，也不能
+`--timeout` 只限制已经启动的直接 Git 子进程，不限制等待任一工作区锁的时间，也不能
 保证结束 Git 再派生的认证、传输或 helper 进程。若需要避免等待锁，应由调用方设置自己的
 整体进程超时或在调用前协调任务。

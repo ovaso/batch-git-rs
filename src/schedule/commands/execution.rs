@@ -2,9 +2,12 @@
 
 use std::env;
 use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::process::{Command, Stdio};
+use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
+use chrono::{Local, SecondsFormat};
 use serde::Serialize;
 use serde_json::json;
 
@@ -182,6 +185,8 @@ pub(super) fn native_run(
     let root = workspace::find_root()?;
     // The child acquires the workspace lock before repeating the revision check and execution.
     context.verify_apply_revision(&root)?;
+    let manifest = workspace::read(&root)?;
+    let action = action_label(find_schedule(&manifest, &arguments.name)?.action);
     let child_arguments =
         native_run_child_arguments(&arguments.name, context.jobs, context.automation);
     let mut command =
@@ -205,17 +210,60 @@ pub(super) fn native_run(
                 log_directory.display()
             )
         })?;
-        let stdout = OpenOptions::new()
+        let mut stdout = OpenOptions::new()
             .create(true)
             .append(true)
             .open(log_directory.join("stdout.log"))?;
-        let stderr = OpenOptions::new()
+        let mut stderr = OpenOptions::new()
             .create(true)
             .append(true)
             .open(log_directory.join("stderr.log"))?;
+        let started_at = Local::now().to_rfc3339_opts(SecondsFormat::Millis, false);
+        let started = Instant::now();
+        write_log_boundary(
+            &mut stdout,
+            &mut stderr,
+            "started",
+            &arguments.name,
+            action,
+            context.jobs,
+            &started_at,
+            None,
+            None,
+        )?;
         command
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr));
+            .stdout(Stdio::from(stdout.try_clone()?))
+            .stderr(Stdio::from(stderr.try_clone()?));
+        let status = match command.status() {
+            Ok(status) => status,
+            Err(error) => {
+                write_log_boundary(
+                    &mut stdout,
+                    &mut stderr,
+                    "failed",
+                    &arguments.name,
+                    action,
+                    context.jobs,
+                    &started_at,
+                    Some(started.elapsed().as_millis()),
+                    Some(1),
+                )?;
+                return Err(error).context("failed to launch scheduled batch-git run");
+            }
+        };
+        let exit_code = status.code().unwrap_or(1);
+        write_log_boundary(
+            &mut stdout,
+            &mut stderr,
+            if exit_code == 0 { "finished" } else { "failed" },
+            &arguments.name,
+            action,
+            context.jobs,
+            &started_at,
+            Some(started.elapsed().as_millis()),
+            Some(exit_code),
+        )?;
+        return finish_native_run(exit_code, arguments.name, context, &root);
     } else {
         command.stdout(Stdio::null()).stderr(Stdio::null());
     }
@@ -223,9 +271,53 @@ pub(super) fn native_run(
         .status()
         .context("failed to launch scheduled batch-git run")?;
     let exit_code = status.code().unwrap_or(1);
+    finish_native_run(exit_code, arguments.name, context, &root)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_log_boundary(
+    stdout: &mut fs::File,
+    stderr: &mut fs::File,
+    event: &str,
+    schedule: &str,
+    action: &str,
+    jobs: usize,
+    started_at: &str,
+    duration_ms: Option<u128>,
+    exit_code: Option<i32>,
+) -> Result<()> {
+    let finished_at = Local::now().to_rfc3339_opts(SecondsFormat::Millis, false);
+    let mut line = format!(
+        "[batch-git schedule] event={event} schedule={schedule} action={action} jobs={jobs} started_at={started_at}"
+    );
+    if let Some(duration_ms) = duration_ms {
+        line.push_str(&format!(
+            " finished_at={finished_at} duration_ms={duration_ms}"
+        ));
+    }
+    if let Some(exit_code) = exit_code {
+        line.push_str(&format!(" exit_code={exit_code}"));
+    }
+    writeln!(stdout, "{line}").context("failed to write schedule stdout log boundary")?;
+    writeln!(stderr, "{line}").context("failed to write schedule stderr log boundary")?;
+    stdout
+        .sync_data()
+        .context("failed to sync schedule stdout log boundary")?;
+    stderr
+        .sync_data()
+        .context("failed to sync schedule stderr log boundary")?;
+    Ok(())
+}
+
+fn finish_native_run(
+    exit_code: i32,
+    schedule: String,
+    context: &CommandContext<'_>,
+    root: &std::path::Path,
+) -> Result<i32> {
     if exit_code == 2 {
         // Preserve a stable stale-plan error when the child rejects the second revision check.
-        context.verify_apply_revision(&root)?;
+        context.verify_apply_revision(root)?;
         bail!(
             "scheduled batch-git run could not start safely (child exited with status {exit_code})"
         );
@@ -233,10 +325,10 @@ pub(super) fn native_run(
     if context.automation.is_machine() {
         context.emit_data(
             "native-run",
-            &root,
+            root,
             exit_code,
             &json!({
-                "schedule": arguments.name,
+                "schedule": schedule,
                 "status": if exit_code == 0 { "completed" } else { "failed" },
                 "child_exit_code": exit_code,
             }),
