@@ -14,6 +14,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Changed
 
+- GitHub Actions now uses supported macOS 15 runner labels, cancels superseded CI runs on the same branch or pull request, validates remote release tags before starting platform builds, and serializes releases for the same tag.
 - Raised the documented and CI-tested minimum supported Rust version from 1.85 to 1.88, matching the language features used by the current source.
 - Split command orchestration into dedicated modules for planning, automation discovery, workspace lifecycle, read-only inspection, synchronization/remotes, staging/commits, branches, and Git passthrough. Workspace lifecycle is further separated into clone, scan, restore, and manifest membership; read-only inspection is separated into list, status, find, info, and branch. Schedule commands are split into declarations, execution, queries, native lifecycle, and pure support rules while retaining isolated three-platform artifacts, registration system calls, and registration state. CLI paths, exit codes, JSON/JSONL fields, capability command strings, and schedule behavior are unchanged.
 - Split Git execution, clone, checkout, inspection, remotes, discovery, and result types; CLI invocation/command/domain arguments; report result/JSONL/machine/text output; and automation options/protocol output/error classification behind facades. Added a default-enabled `schedule` Cargo feature: normal builds keep the full command surface, while minimal builds can conditionally omit schedule commands and native integration.
@@ -27,6 +28,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Validation
 
+- CI and Release platform builds now record Linux and macOS dynamic dependency inspection, and the contribution guide documents the protected-main pull-request and post-merge tagging workflow.
 - Added regression coverage for the flat top-level command surface and complete capabilities roster, preventing later internal work from accidentally renaming commands or adding nested paths.
 - Added compilation, CLI-surface, and capability-roster checks without default features. Default features continue to run complete schedule, automation-protocol, and MVP regressions.
 - CI now runs no-default-feature check, full tests, Clippy, release build, and behavioral verification for minimal help, capabilities, and the absent schedule command.

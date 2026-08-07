@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   GIT_AUTHOR_NAME: Batch Git Tests
   GIT_AUTHOR_EMAIL: batch-git@example.invalid
@@ -116,7 +120,7 @@ jobs:
           - name: Linux x86_64
             os: ubuntu-latest
           - name: macOS arm64
-            os: macos-14
+            os: macos-15
           - name: Windows x86_64
             os: windows-latest
     runs-on: ${{ matrix.os }}
@@ -125,6 +129,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Build release
         run: cargo build --locked --release
+      - name: Inspect Linux dynamic dependencies
+        if: runner.os == 'Linux'
+        run: ldd target/release/batch-git
+      - name: Inspect macOS dynamic dependencies
+        if: runner.os == 'macOS'
+        run: otool -L target/release/batch-git
       - name: Verify executable
         shell: bash
         run: |
