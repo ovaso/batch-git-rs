@@ -110,7 +110,7 @@ batch-git --output json env list
 
 | 环境变量 | 默认值 | 说明 |
 |---|---:|---|
-| `BATCH_GIT_JOBS` | `4` | 最大并发仓库数，必须大于 `0` |
+| `BATCH_GIT_JOBS` | 可用逻辑 CPU 数（探测失败时为 `1`） | 最大并发仓库数，必须大于 `0` |
 | `BATCH_GIT_SCAN_DEPTH` | `1` | `scan` 默认扫描深度，必须大于 `0` |
 | `BATCH_GIT_WORKSPACE` | 未设置 | 普通命令使用的绝对工作区路径 |
 | `BATCH_GIT_STATE_DIR` | 平台用户 state 目录 | schedule 注册状态和日志根目录 |

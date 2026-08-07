@@ -275,6 +275,8 @@ lists variables in help order. Each item has string fields `name`, `default`, an
 invocation, including global `--jobs`, auto-discovered workspace, expanded platform state directory,
 and possibly host absolute paths. Invalid environment values still return exit code `2` rather than a
 plausible fallback. Automation must read these fields instead of parsing text tables or color.
+When `BATCH_GIT_JOBS` is unset, its dynamic `default` is the current system's available logical CPU
+count, with `1` as the fallback when it cannot be determined.
 
 Legacy JSON shapes:
 

@@ -116,7 +116,7 @@ reflected in the effective value.
 
 | Environment variable | Default | Description |
 |---|---:|---|
-| `BATCH_GIT_JOBS` | `4` | Maximum concurrent repositories; must be greater than `0`. |
+| `BATCH_GIT_JOBS` | Available logical CPU count (falls back to `1`) | Maximum concurrent repositories; must be greater than `0`. |
 | `BATCH_GIT_SCAN_DEPTH` | `1` | Default scan depth; must be greater than `0`. |
 | `BATCH_GIT_WORKSPACE` | Unset | Absolute workspace path used by normal commands. |
 | `BATCH_GIT_STATE_DIR` | Platform user state directory | Root for schedule registration state and logs. |

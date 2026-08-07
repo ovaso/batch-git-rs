@@ -451,7 +451,7 @@ batch-git forget services/legacy
 ## 10. 并发、输出和颜色
 
 多仓库任务使用有上限的并发，但结果始终按清单顺序输出。单仓库失败不会取消
-其他仓库。并发数优先级为：`--jobs` > `BATCH_GIT_JOBS` > `4`。
+其他仓库。并发数优先级为：`--jobs` > `BATCH_GIT_JOBS` > 可用逻辑 CPU 数（无法探测时为 `1`）。
 
 交互终端中的 clone、restore 和 fetch 会显示动态进度；重定向或 CI 中自动退化为
 稳定表格。设置 `NO_COLOR`、`TERM=dumb`，或将输出接入管道时，不输出颜色控制码。

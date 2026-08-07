@@ -50,7 +50,7 @@ Legacy subcommand `--json` remains for old scripts but is not a unified schema. 
 - `add`, `commit`, `unstage`, `sync`, `pull`, and `push` accept exact names/relative directories, repeatable `--match`, or `--all`; omitting selectors means the whole workspace. The three staging commands initially accept no file pathspec.
 - `exec` requires at least one exact selector or `--match`; use `batch-git -- <git args>` for whole-workspace passthrough.
 - `find --repo` filters canonical repository names only. Wildcards support only case-sensitive `*`.
-- Concurrency precedence is `--jobs`, `BATCH_GIT_JOBS`, then default `4`. Stable output order does not prevent parallel writes from changing multiple repositories at once.
+- Concurrency precedence is `--jobs`, `BATCH_GIT_JOBS`, then the available logical CPU count (falling back to `1` when unavailable). Stable output order does not prevent parallel writes from changing multiple repositories at once.
 
 ## Key guarantees and boundaries
 

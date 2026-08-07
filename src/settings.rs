@@ -6,8 +6,12 @@ use std::path::PathBuf;
 use anyhow::{Context, Result, bail};
 
 use crate::error::{ClassifyResult, ErrorCode};
-/// 默认并发仓库数。
-pub(crate) const DEFAULT_JOBS: usize = 4;
+/// 返回默认并发仓库数：系统可用的逻辑 CPU 数，无法探测时保守地使用一个线程。
+pub(crate) fn default_jobs() -> usize {
+    std::thread::available_parallelism()
+        .map(std::num::NonZeroUsize::get)
+        .unwrap_or(1)
+}
 /// 默认只扫描工作区根目录下一层。
 pub(crate) const DEFAULT_SCAN_DEPTH: usize = 1;
 
@@ -31,7 +35,7 @@ pub(crate) fn environment_variables(resolved_jobs: usize) -> Result<Vec<Environm
         environment_variable(
             "BATCH_GIT_JOBS",
             "Maximum number of repositories operated concurrently.",
-            DEFAULT_JOBS,
+            default_jobs(),
             resolved_jobs,
         ),
         environment_variable(
@@ -175,7 +179,7 @@ pub(crate) fn home_directory() -> Result<PathBuf> {
 
 /// 解析并发数，优先级依次为 CLI、环境变量、默认值。
 pub(crate) fn jobs(cli_value: Option<usize>) -> Result<usize> {
-    let result = positive_usize("jobs", cli_value, "BATCH_GIT_JOBS", DEFAULT_JOBS);
+    let result = positive_usize("jobs", cli_value, "BATCH_GIT_JOBS", default_jobs());
     if cli_value.is_some() {
         result.classify(ErrorCode::InvalidArguments)
     } else {
