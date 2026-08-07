@@ -205,8 +205,9 @@ BATCH_GIT_SCHEDULE_LOG=false batch-git schedule register nightly-sync
 
 When logging is enabled, all three scheduler platforms enter through `schedule native-run --log`.
 Each `stdout.log` and `stderr.log` therefore contains a `started` record and a final `finished` or
-`failed` record with UTC `started_at` / `finished_at`, `duration_ms`, the schedule action and jobs,
-and the child exit code. The child command's normal output remains between those records.
+`failed` record with local-time `started_at` / `finished_at` values that include their numeric UTC
+offset (for example `+08:00`), `duration_ms`, the schedule action and jobs, and the child exit code.
+The child command's normal output remains between those records.
 
 The variable is read during `generate`/`register` and embedded in the native definition. Manual
 `schedule run` always produces normal output and ignores this setting. Registered native tasks enter

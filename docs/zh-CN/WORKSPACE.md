@@ -21,16 +21,16 @@ mv workspace.toml batchspace.toml
 
 ```toml
 version = 1
-created_at = "2026-07-28T12:00:00Z"
-updated_at = "2026-07-29T09:30:00Z"
+created_at = "2026-07-28T20:00:00+08:00"
+updated_at = "2026-07-29T17:30:00+08:00"
 
 [[repositories]]
 name = "service-api"
 directory = "services/service-api"
 default_branch = "main"
 primary_remote = "origin"
-created_at = "2026-07-28T12:10:00Z"
-synced_at = "2026-07-29T08:30:00Z"
+created_at = "2026-07-28T20:10:00+08:00"
+synced_at = "2026-07-29T16:30:00+08:00"
 
 [[repositories.remotes]]
 name = "origin"
@@ -56,8 +56,8 @@ all = true
 | `directory` | 是 | 工作区内唯一的相对目录，不允许绝对路径、`.` 或 `..`；真实路径也不得经 symlink 解析到工作区外 |
 | `default_branch` | 是 | `checkout --default` 的目标分支，也是 `merge --default` 的源分支 |
 | `primary_remote` | 是 | 主远端名称，必须存在于 `remotes` 中；缺省按 `origin` 读取 |
-| `created_at` | 是 | RFC 3339 时间 |
-| `synced_at` | 否 | 最近一次成功同步时间 |
+| `created_at` | 是 | 使用带数值 UTC 偏移的本地时区生成的 RFC 3339 时间，例如 `+08:00`；既有 UTC（`Z`）值仍然有效。 |
+| `synced_at` | 否 | 使用带数值 UTC 偏移的本地时区生成的最近一次成功同步时间 |
 | `remotes` | 是 | 至少一个命名远端 |
 | `fetch_url` | 是 | fetch URL |
 | `push_url` | 否 | 独立 push URL；省略或等于 `fetch_url` 时清除仓库中的独立 push URL |

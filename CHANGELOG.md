@@ -10,7 +10,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ### Changed
 
 - Made `.batchspace.lock` the hidden canonical runtime workspace lock. It remains after use; only the operating-system lock is released when its file handle closes, avoiding delete/recreate races. v1 also takes the legacy `.workspace.lock` after the canonical lock so clients on both sides of the rename remain mutually exclusive.
-- Logged scheduled runs now write UTC start/end timestamps, duration in milliseconds, action, jobs, and child exit code to both log streams. launchd and systemd logged definitions now share the `native-run` launcher already used by Windows, so the format is consistent across platforms.
+- Newly generated manifest timestamps and logged scheduled runs now use local RFC 3339 time with a numeric UTC offset (for example `+08:00`). Schedule logs also write start/end times, duration in milliseconds, action, jobs, and child exit code to both log streams. launchd and systemd logged definitions now share the `native-run` launcher already used by Windows, so the format is consistent across platforms.
 
 ## [1.0.0] - 2026-08-07
 

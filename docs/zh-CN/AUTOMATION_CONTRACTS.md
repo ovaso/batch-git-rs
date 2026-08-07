@@ -35,7 +35,7 @@ Git 输出；文本详细模式或调试 per-repository 结果的消费者不得
 已注册的原生 schedule 通过隐藏的 `schedule native-run` 入口启动时，也会无条件向其实际
 `schedule run` child 传递 `--non-interactive`，不支持依赖终端提示的认证流程。注册时启用
 schedule 日志后，每个日志流还会写入面向人工诊断的 `started` 以及最终 `finished` / `failed`
-边界记录，包含 UTC 时间、耗时、动作、并发数和退出码。这些文本日志不是机器协议；自动化仍必须
+边界记录，包含带数值 UTC 偏移的本地 RFC 3339 时间、耗时、动作、并发数和退出码。这些文本日志不是机器协议；自动化仍必须
 以 JSON receipt 和进程退出码为准。
 
 旧的子命令 `--json` 仍保持原有顶层形状，例如 `list --json` 是对象、`schedule list --json`

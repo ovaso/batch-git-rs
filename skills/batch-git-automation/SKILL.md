@@ -50,7 +50,7 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 - Machine mode disables Git terminal interaction implicitly. For unattended text mode, use `--non-interactive` and, when needed, `--timeout 30s`, `5m`, or `1h`. Timeout terminates only the direct system Git child, not lock waits, and cannot guarantee termination of authentication, transport, filter, hook, or signing descendants. After commit timeout, local refs may already have changed; recheck HEAD and the index instead of retrying blindly.
 - Decide from `status`, `reason_code`, `error.code`, and exit code. `detail` and `error.message` are human diagnostics and may evolve. Top-level codes come from typed errors; never reclassify by matching message keywords.
 - Captured Git stdout/stderr may retain only head and tail after 1 MiB, with a truncation marker. Machine receipts contain no raw Git output. When complete logs are required, use a user-authorized logging method scoped to the exact repository.
-- Registered schedules with `BATCH_GIT_SCHEDULE_LOG=true` write human diagnostic boundaries to both streams: UTC start/end timestamps, duration, action, jobs, and exit code. Treat them as evolving text diagnostics, not a protocol; decide from JSON receipts and process exit codes.
+- Registered schedules with `BATCH_GIT_SCHEDULE_LOG=true` write human diagnostic boundaries to both streams: local RFC 3339 start/end timestamps with a numeric UTC offset, duration, action, jobs, and exit code. Treat them as evolving text diagnostics, not a protocol; decide from JSON receipts and process exit codes.
 
 ## Selection and safety boundaries
 

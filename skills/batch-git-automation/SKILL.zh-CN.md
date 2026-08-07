@@ -66,8 +66,8 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
   人类诊断，未来可演进；顶层 code 来自类型化错误，不要从 message 关键词自行重分类。
 - 捕获的 Git stdout/stderr 可能在 1 MiB 后保留头尾并标记截断。机器 receipt 本身不携带原始
   Git 输出；需要完整日志时，应在精确仓库中使用用户明确授权的专用日志方案。
-- 已注册任务设置 `BATCH_GIT_SCHEDULE_LOG=true` 时，两个日志流都会写入面向人工诊断的边界信息：UTC
-  开始/结束时间、耗时、动作、并发数和退出码。它们是可演进的文本诊断，不是协议；仍以 JSON receipt
+- 已注册任务设置 `BATCH_GIT_SCHEDULE_LOG=true` 时，两个日志流都会写入面向人工诊断的边界信息：带数值
+  UTC 偏移的本地 RFC 3339 开始/结束时间、耗时、动作、并发数和退出码。它们是可演进的文本诊断，不是协议；仍以 JSON receipt
   和进程退出码作出自动化决策。
 
 ## 选择与安全边界

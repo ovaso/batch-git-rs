@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
-use chrono::{SecondsFormat, Utc};
+use chrono::{Local, SecondsFormat};
 use serde::Serialize;
 use serde_json::json;
 
@@ -218,7 +218,7 @@ pub(super) fn native_run(
             .create(true)
             .append(true)
             .open(log_directory.join("stderr.log"))?;
-        let started_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+        let started_at = Local::now().to_rfc3339_opts(SecondsFormat::Millis, false);
         let started = Instant::now();
         write_log_boundary(
             &mut stdout,
@@ -286,7 +286,7 @@ fn write_log_boundary(
     duration_ms: Option<u128>,
     exit_code: Option<i32>,
 ) -> Result<()> {
-    let finished_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+    let finished_at = Local::now().to_rfc3339_opts(SecondsFormat::Millis, false);
     let mut line = format!(
         "[batch-git schedule] event={event} schedule={schedule} action={action} jobs={jobs} started_at={started_at}"
     );

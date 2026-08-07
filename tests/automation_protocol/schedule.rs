@@ -43,6 +43,20 @@ fn native_run_logs_execution_boundaries_and_performance_metadata() {
         assert!(log.contains("finished_at="));
         assert!(log.contains("duration_ms="));
         assert!(log.contains("exit_code=0"));
+        for field in ["started_at", "finished_at"] {
+            let timestamp = log
+                .split_whitespace()
+                .find_map(|entry| entry.strip_prefix(&format!("{field}=")))
+                .expect("log includes timestamp field");
+            assert!(chrono::DateTime::parse_from_rfc3339(timestamp).is_ok());
+            assert!(
+                timestamp
+                    .as_bytes()
+                    .get(timestamp.len().saturating_sub(6))
+                    .is_some_and(|sign| matches!(sign, b'+' | b'-')),
+                "{field} must use a numeric local UTC offset: {timestamp}"
+            );
+        }
     }
 }
 

@@ -197,8 +197,8 @@ BATCH_GIT_SCHEDULE_LOG=false batch-git schedule register nightly-sync
 ```
 
 启用日志时，三个调度平台都会通过 `schedule native-run --log` 启动。每个 `stdout.log` 和
-`stderr.log` 都会包含一条 `started` 记录，以及最后一条 `finished` 或 `failed` 记录；记录含 UTC
-`started_at` / `finished_at`、`duration_ms`、计划动作、并发数和子进程退出码。子命令原有输出保留在这两条记录之间。
+`stderr.log` 都会包含一条 `started` 记录，以及最后一条 `finished` 或 `failed` 记录；记录含本地时区
+`started_at` / `finished_at`（带数值 UTC 偏移，例如 `+08:00`）、`duration_ms`、计划动作、并发数和子进程退出码。子命令原有输出保留在这两条记录之间。
 
 该变量在 `generate/register` 时读取并固化到原生定义。手动 `schedule run` 始终
 正常输出，不受此变量影响。已注册的原生任务通过隐藏的 `schedule native-run` 入口启动时，

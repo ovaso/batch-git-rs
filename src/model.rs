@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use std::path::{Component, Path};
 
 use anyhow::{Context, Result, bail};
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Local, SecondsFormat};
 use serde::{Deserialize, Serialize};
 
 /// 工作区清单的固定文件名。
@@ -19,7 +19,7 @@ pub const LEGACY_LOCK_FILE: &str = ".workspace.lock";
 pub struct Workspace {
     /// 清单格式版本，用于未来进行兼容性迁移。
     pub version: u32,
-    /// 工作区首次创建时间，使用 RFC 3339 UTC 字符串。
+    /// 工作区首次创建时间，使用带本地 UTC 偏移的 RFC 3339 字符串。
     pub created_at: String,
     /// 清单最近一次成功写入时间。
     pub updated_at: String,
@@ -147,9 +147,11 @@ fn default_primary_remote() -> String {
     "origin".to_owned()
 }
 
-/// 返回秒精度、UTC 的 RFC 3339 时间戳。
+/// 返回秒精度、带本地 UTC 偏移的 RFC 3339 时间戳。
+///
+/// 时间戳保留偏移量，既可直接按本地时间阅读，也仍能无歧义地表示同一时刻。
 pub fn now() -> String {
-    Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+    Local::now().to_rfc3339_opts(SecondsFormat::Secs, false)
 }
 
 impl Workspace {
@@ -372,4 +374,22 @@ pub fn validate_directory(directory: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generated_timestamps_use_a_numeric_local_offset() {
+        let timestamp = now();
+        assert!(DateTime::parse_from_rfc3339(&timestamp).is_ok());
+        assert!(
+            timestamp
+                .as_bytes()
+                .get(timestamp.len().saturating_sub(6))
+                .is_some_and(|sign| matches!(sign, b'+' | b'-')),
+            "timestamp must end with a numeric UTC offset: {timestamp}"
+        );
+    }
 }

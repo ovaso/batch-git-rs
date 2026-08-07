@@ -22,16 +22,16 @@ mv workspace.toml batchspace.toml
 
 ```toml
 version = 1
-created_at = "2026-07-28T12:00:00Z"
-updated_at = "2026-07-29T09:30:00Z"
+created_at = "2026-07-28T20:00:00+08:00"
+updated_at = "2026-07-29T17:30:00+08:00"
 
 [[repositories]]
 name = "service-api"
 directory = "services/service-api"
 default_branch = "main"
 primary_remote = "origin"
-created_at = "2026-07-28T12:10:00Z"
-synced_at = "2026-07-29T08:30:00Z"
+created_at = "2026-07-28T20:10:00+08:00"
+synced_at = "2026-07-29T16:30:00+08:00"
 
 [[repositories.remotes]]
 name = "origin"
@@ -57,8 +57,8 @@ all = true
 | `directory` | Yes | Unique workspace-relative directory. Absolute paths, `.` and `..` are forbidden, and the real path must not resolve outside the workspace through a symlink. |
 | `default_branch` | Yes | Target of `checkout --default` and source branch for `merge --default`. |
 | `primary_remote` | Yes | Primary remote name; must exist in `remotes`. Discovery defaults to `origin`. |
-| `created_at` | Yes | RFC 3339 timestamp. |
-| `synced_at` | No | Most recent successful synchronization time. |
+| `created_at` | Yes | RFC 3339 timestamp generated in the local timezone with its numeric UTC offset, for example `+08:00`. Existing UTC (`Z`) values remain valid. |
+| `synced_at` | No | Most recent successful synchronization time, generated in the local timezone with its numeric UTC offset. |
 | `remotes` | Yes | At least one named remote. |
 | `fetch_url` | Yes | Fetch URL. |
 | `push_url` | No | Separate push URL. Omitting it, or setting it equal to `fetch_url`, clears a separate push URL in the repository. |
