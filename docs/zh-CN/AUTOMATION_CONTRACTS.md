@@ -227,9 +227,9 @@ batch-git --output json schema workspace
 核心字段但允许未来新增字段。
 
 规范 schema 标识分别为
-`https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json` 和
-`https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json`。`$id` 是二进制返回的稳定
-schema 标识；实际当前文档应通过 `schema` 命令获取。
+`https://github.com/livenv/batch-git/schemas/operation-result-v1.json` 和
+`https://github.com/livenv/batch-git/schemas/workspace-v1.json`。这些旧命名空间值是稳定的
+协议标识而非仓库下载链接，因此仓库迁移后也保持不变；实际当前文档应通过 `schema` 命令获取。
 
 ## 命令覆盖与旧 JSON
 

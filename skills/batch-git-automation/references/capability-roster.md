@@ -13,7 +13,7 @@ capabilities below apply only when `commands` actually contains `schedule`.
 | Capability | Command | Agent rule |
 |---|---|---|
 | Capability discovery | `capabilities` | Starting point in every new environment; read protocol version, formats, commands, and safety boundaries. |
-| Schema discovery | `schema operation-result`, `schema workspace` | Validate core receipt fields while allowing future optional fields. The workspace schema accepts omitted default manifest fields; canonical `$id` values use the `https://github.com/ovaso/batch-git-rs/schemas/` namespace. |
+| Schema discovery | `schema operation-result`, `schema workspace` | Validate core receipt fields while allowing future optional fields. The workspace schema accepts omitted default manifest fields; canonical v1 `$id` values retain the legacy `https://github.com/livenv/batch-git/schemas/` namespace as stable protocol identifiers. |
 | Single receipt | `--output json <command>` | Default for new automation; stdout contains exactly one v1 JSON document. |
 | Long-task events | `--output jsonl <command>` | Consume `started`, `repository_finished`, `finished`. Batch operations and single clone emit repository terminal events in manifest order, not completion order. Decide from the final event and exit code. |
 | Correlation | `--request-id <id>` | Echo the caller's 1–128-character non-control ID into all machine output. |

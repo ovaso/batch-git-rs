@@ -11,7 +11,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Fixed
 
-- Corrected repository metadata, installer downloads, release and attestation links, and automation schema identifiers to use `ovaso/batch-git-rs`. Release badges now select the latest semantic-version tag, and installation documentation no longer advertises the crate before it is published to crates.io.
+- Corrected repository metadata, installer downloads, and release and attestation links to use `ovaso/batch-git-rs`, while preserving the legacy v1 automation schema identifiers for compatibility. Release badges now select the latest semantic-version tag, and installation documentation no longer advertises the crate before it is published to crates.io.
 
 ## [0.4.4] - 2026-08-07
 
