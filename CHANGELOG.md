@@ -11,7 +11,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 - Documented the repository-only distribution and trust policy: generated code is not treated as
   release readiness, public package registries are intentionally excluded, and this GitHub
-  repository plus its Releases define the project's distribution trust boundary.
+  repository plus its Releases define the project's distribution trust boundary. The Cargo manifest
+  now disables registry publication.
 - Replaced fixed release-support, response-time, disclosure, and backport promises with statements
   of current CI validation scope and best-effort maintainer availability.
 

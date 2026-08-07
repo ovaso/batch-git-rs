@@ -3,6 +3,7 @@ name = "batch-git"
 version = "0.4.5"
 edition = "2024"
 license = "MIT"
+publish = false
 description = "Safe, declarative management of workspaces containing multiple Git repositories"
 readme = "README.md"
 repository = "https://github.com/ovaso/batch-git-rs"
