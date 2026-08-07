@@ -46,7 +46,7 @@ pub(super) fn error_descriptor(error: &anyhow::Error) -> ErrorDescriptor {
         Some(ErrorCode::WorkspaceManifestInvalid) => ErrorDescriptor {
             code: "workspace_manifest_invalid",
             retryable: false,
-            hint: Some("Fix workspace.toml and retry."),
+            hint: Some("Fix batchspace.toml and retry."),
         },
         Some(ErrorCode::Timeout) => ErrorDescriptor {
             code: "timeout",

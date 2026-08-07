@@ -1,6 +1,6 @@
 [package]
 name = "batch-git"
-version = "0.4.5"
+version = "1.0.0"
 edition = "2024"
 license = "MIT"
 publish = false

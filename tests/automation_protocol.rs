@@ -96,7 +96,7 @@ impl WorkspaceFixture {
 
     #[cfg(feature = "schedule")]
     fn add_sync_schedule(&self, overlap: &str) {
-        let manifest_path = self.workspace.join("workspace.toml");
+        let manifest_path = self.workspace.join("batchspace.toml");
         let mut manifest = fs::read_to_string(&manifest_path).expect("read fixture manifest");
         manifest.push_str(&format!(
             r#"
@@ -397,7 +397,7 @@ name = "origin"
 fetch_url = "{remote}"
 "#,
     );
-    fs::write(workspace.join("workspace.toml"), manifest).expect("write fixture manifest");
+    fs::write(workspace.join("batchspace.toml"), manifest).expect("write fixture manifest");
 }
 
 fn toml_string(path: &Path) -> String {

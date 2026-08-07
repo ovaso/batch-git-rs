@@ -82,7 +82,7 @@ Core fields:
 | `api_version` | Currently fixed at `v1`. |
 | `command` | Command actually executed; schedule values look like `schedule list` or `schedule run`. |
 | `request_id` | Caller-provided correlation ID; omitted when absent. It must contain 1–128 non-control characters. |
-| `workspace` | Resolved workspace path and current `workspace.toml` SHA-256 revision; omitted when not applicable. |
+| `workspace` | Resolved workspace path and current `batchspace.toml` SHA-256 revision; omitted when not applicable. |
 | `exit_code` / `ok` | Match the process exit code. For partial repository failure, `ok=false` and `exit_code=1`, but `error=null`. |
 | `data` | Command result. Commands may add fields; do not assume one shared data model. |
 | `error` | Used only for top-level exit-code-`2` failures; `null` on success or partial repository failure. |
@@ -118,7 +118,7 @@ stable code in `error`:
 |---|---|
 | `invalid_arguments` | Correct the CLI arguments; for example, `commit -m` cannot have an empty message. |
 | `workspace_not_found` | Enter a workspace, create a manifest, or set absolute `BATCH_GIT_WORKSPACE`. |
-| `workspace_manifest_invalid` | Repair `workspace.toml`. |
+| `workspace_manifest_invalid` | Repair `batchspace.toml`. |
 | `unknown_repository` / `ambiguous_repository` / `selector_no_match` | Use `list --output json` to obtain canonical names. |
 | `stale_workspace_revision` | Plan again and use the new revision. |
 | `workspace_locked` | Wait for the current operation and retry. |
@@ -206,7 +206,7 @@ plan Booleans always describe effective apply behavior. If `update_current` is t
 branch has no upstream, that repository skips the fast-forward pull and continues merging the source;
 the parameter records requested behavior, not a guarantee that every repository starts pull.
 
-Apply rechecks the exact `workspace.toml` byte digest after acquiring the workspace lock and before
+Apply rechecks the exact `batchspace.toml` byte digest after acquiring the workspace lock and before
 running Git. It prevents manifest drift between plan and execution but does **not** preserve remote,
 HEAD, index, or working-tree state; normal Git runtime checks still apply. Batch operations complete
 per repository and provide no cross-repository transactional rollback. A partially successful commit
@@ -221,7 +221,7 @@ the two models.
 
 `restore` intentionally uses the invocation's current directory as the workspace root instead of
 searching for a parent manifest. Before planning or applying restore, `cd` to the directory containing
-`workspace.toml`. If a clone or restore Git child fails or times out, the destination remains for
+`batchspace.toml`. If a clone or restore Git child fails or times out, the destination remains for
 inspection and is not registered automatically. batch-git does not recursively delete it because a
 concurrent process may have written content there. Handle the directory before retrying.
 
@@ -245,7 +245,7 @@ declare `commit_stages_content=false`, `add_rejects_unresolved_conflicts=true`,
 `commit_rejects_repository_operations=true`, and `unstage_preserves_working_trees=true` in `safety`.
 
 `schema operation-result` returns the v1 envelope JSON Schema. `schema workspace` returns the JSON
-representation schema for `workspace.toml` input, not a serializer-specific format with defaults
+representation schema for `batchspace.toml` input, not a serializer-specific format with defaults
 filled in. It accepts omitted defaults such as empty `repositories` / `schedules` and schedule
 `enabled`, `action`, `timezone`, and `overlap`. The schema uses `additionalProperties: true`, so
 consumers should validate core fields while allowing future additions.

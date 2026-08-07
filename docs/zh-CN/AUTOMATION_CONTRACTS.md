@@ -75,7 +75,7 @@ Git 输出；文本详细模式或调试 per-repository 结果的消费者不得
 | `api_version` | 当前固定为 `v1`。 |
 | `command` | 实际执行的命令；schedule 形如 `schedule list` / `schedule run`。 |
 | `request_id` | 调用方提供的关联标识；未提供则省略。长度为 1–128 个非控制字符。 |
-| `workspace` | 已解析的工作区路径及当前 `workspace.toml` SHA-256 revision；不适用时省略。 |
+| `workspace` | 已解析的工作区路径及当前 `batchspace.toml` SHA-256 revision；不适用时省略。 |
 | `exit_code` / `ok` | 与进程退出码一致。部分仓库失败时 `ok=false`、`exit_code=1`，但 `error=null`。 |
 | `data` | 命令结果；允许按命令新增字段。不要假设所有命令具有相同数据模型。 |
 | `error` | 仅顶层错误（退出码 `2`）使用；成功或部分仓库失败时为 `null`。 |
@@ -110,7 +110,7 @@ Git 输出；文本详细模式或调试 per-repository 结果的消费者不得
 |---|---|
 | `invalid_arguments` | 修正 CLI 参数；例如 `commit -m` 的消息不能为空。 |
 | `workspace_not_found` | 进入工作区、创建清单或设置绝对 `BATCH_GIT_WORKSPACE`。 |
-| `workspace_manifest_invalid` | 修复 `workspace.toml`。 |
+| `workspace_manifest_invalid` | 修复 `batchspace.toml`。 |
 | `unknown_repository` / `ambiguous_repository` / `selector_no_match` | 先用 `list --output json` 获取规范名称。 |
 | `stale_workspace_revision` | 重新 plan，使用返回的新 revision。 |
 | `workspace_locked` | 等当前任务结束后重试。 |
@@ -189,7 +189,7 @@ CLI 的启用或 `--no-*` 关闭选项优先，plan 中的两个布尔参数始�
 当 `update_current` 为 true 而当前分支没有 upstream 时，该仓库会跳过 ff-only pull 并继续来源合并；
 该参数表示请求的行为，不保证每个仓库都实际启动 pull。
 
-apply 在获取工作区锁后、执行 Git 前重新核对 `workspace.toml` 字节摘要。它防止清单在
+apply 在获取工作区锁后、执行 Git 前重新核对 `batchspace.toml` 字节摘要。它防止清单在
 plan 与执行之间漂移，但**不**保留远端、HEAD、index 或工作树状态；Git 的正常安全检查仍在
 执行时进行。批量操作始终是逐仓库完成，不提供跨仓库事务回滚。commit 的部分仓库成功不会因
 其他仓库的 hook、签名、冲突或 Git 失败而自动 reset、amend 或 rebase。
@@ -200,7 +200,7 @@ plan 与执行之间漂移，但**不**保留远端、HEAD、index 或工作树�
 会明确拒绝，避免混淆两套语义。
 
 `restore` 有意以调用时的当前目录作为工作区根目录，而不是向上查找父清单。因此对它执行
-plan 或 apply 时，都必须先 `cd` 到含有 `workspace.toml` 的工作区根目录。
+plan 或 apply 时，都必须先 `cd` 到含有 `batchspace.toml` 的工作区根目录。
 clone 或 restore 的 Git 子进程失败/超时时，目标目录会保留供人工检查，且不会自动登记；
 batch-git 不会递归删除该目录，因为其内容可能已被并发进程写入。处理该目录后才能重试。
 
@@ -221,7 +221,7 @@ batch-git --output json schema workspace
 `safety` 中声明 `commit_stages_content=false`、`add_rejects_unresolved_conflicts=true`、
 `commit_rejects_repository_operations=true` 和 `unstage_preserves_working_trees=true`。
 `schema operation-result` 返回 v1 envelope 的 JSON Schema；`schema workspace` 返回
-`workspace.toml` 输入的 JSON 表示 schema，而不是序列化后补齐默认值的专用格式。因此它接受
+`batchspace.toml` 输入的 JSON 表示 schema，而不是序列化后补齐默认值的专用格式。因此它接受
 省略的默认字段，例如空的 `repositories` / `schedules` 集合，以及 schedule 的 `enabled`、
 `action`、`timezone` 和 `overlap`。Schema 使用 `additionalProperties: true`，因此消费者应验证
 核心字段但允许未来新增字段。

@@ -8,7 +8,7 @@
 
 ## 工作规则
 
-- 保持 `workspace.toml` 是唯一的持久化工作区事实来源；不得引入第二份状态文件。
+- 保持 `batchspace.toml` 是唯一的持久化工作区事实来源；不得引入第二份状态文件。
 - 不要使 `batch-git` 隐式执行 merge、rebase、stash、reset、clean、force push 或删除仓库。
 - 改动 CLI 参数、退出码、JSON 字段、清单 schema 或 schedule 行为时，同步更新帮助文本、
   对应中英文用户文档、`AUTOMATION_CONTRACTS.md` 与两份 CHANGELOG。

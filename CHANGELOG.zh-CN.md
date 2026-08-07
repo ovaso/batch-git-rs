@@ -5,10 +5,12 @@
 本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
 [语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
-## [Unreleased]
+## [1.0.0] - 2026-08-07
 
 ### Changed
 
+- 将工作区清单从 `workspace.toml` 更名为 `batchspace.toml`，避免与其他工具冲突。这是破坏性的
+  发现行为变更：既有工作区必须显式重命名清单；batch-git 不会同时读取两个文件名或创建第二份清单。
 - 记录仅以本仓库为边界的分发与信任原则：不把生成代码等同于可发布状态，有意不进入公共包
   仓库，并以本 GitHub 仓库及其 Releases 界定项目的分发信任范围；Cargo manifest 同时禁用
   registry 发布。
@@ -141,7 +143,7 @@
 
 ### Added
 
-- 新增 `batch-git merge --default`（短参数 `-d`），逐仓库读取 `workspace.toml` 的
+- 新增 `batch-git merge --default`（短参数 `-d`），逐仓库读取 `batchspace.toml` 的
   `default_branch` 并合入各自当前分支；支持多级复杂分支名，本地分支不存在时固定回退到该仓库
   的 `primary_remote`，且不会隐式 fetch；
 - merge plan 为每个仓库新增 `source_branch`、`source_mode` 和 `remote_fallback`，便于在
@@ -175,7 +177,7 @@
 - `capabilities` 与 `schema operation-result|workspace`，使 agent 可从当前二进制发现协议、
   安全边界和 JSON Schema，而不是猜测安装版本；
 - `--plan` / `--apply --expect-workspace-revision`：零副作用预览已解析范围、风险和副作用，
-  并在执行前核对 `workspace.toml` SHA-256 revision；
+  并在执行前核对 `batchspace.toml` SHA-256 revision；
 - `--non-interactive` 与每个系统 Git 子进程的 `--timeout`；timeout 只终止直接启动的子进程，Git
   后代进程可能继续存活；clone/restore 超时或失败时保留目标目录供人工检查，避免递归删除
   并发写入的内容；
@@ -227,7 +229,7 @@
 ### 工作区管理
 
 - 支持扫描已有仓库、克隆并登记、从清单恢复、fetch/prune 和安全 sync；
-- 使用 `workspace.toml` 保存仓库、远端、默认分支和 schedule 声明；
+- 使用 `batchspace.toml` 保存仓库、远端、默认分支和 schedule 声明；
 - 清单校验、原子写入、URL 凭据清理和工作区锁；
 - 支持工作区/仓库信息、状态、当前分支、列表和 JSON 输出。
 
@@ -262,7 +264,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...v1.0.0
 [0.4.5]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ovaso/batch-git-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ovaso/batch-git-rs/compare/v0.4.2...v0.4.3

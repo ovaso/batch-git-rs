@@ -7,7 +7,7 @@
 [简体中文](README.zh-CN.md)
 
 `batch-git` is a multi-repository Git workspace manager. It uses one portable, reviewable
-`workspace.toml` manifest to manage multiple independent Git repositories; the workspace itself
+`batchspace.toml` manifest to manage multiple independent Git repositories; the workspace itself
 does not need to be a Git repository.
 
 ## Highlights
@@ -97,7 +97,7 @@ discover that prefix automatically, follow the
 
 The default feature set includes `schedule`, so normal builds retain the complete command surface.
 Disabling default features only removes the `schedule` command and native scheduler integration
-from that binary. Existing schedule declarations are still parsed and preserved in `workspace.toml`,
+from that binary. Existing schedule declarations are still parsed and preserved in `batchspace.toml`,
 preventing a minimal build from discarding manifest data. Automation should inspect
 `capabilities.data.commands` before attempting schedule operations.
 
@@ -131,7 +131,7 @@ Restore a workspace from its manifest:
 
 ```sh
 mkdir restored-workspace
-cp workspace.toml restored-workspace/
+cp batchspace.toml restored-workspace/
 cd restored-workspace
 batch-git restore
 batch-git fetch
@@ -206,7 +206,7 @@ in manifest order, so a later repository that finishes first may wait for earlie
 `--non-interactive` disables Git prompts. `--timeout 5m` limits only the directly launched Git child
 process and cannot guarantee termination of authentication or transport descendants.
 
-The schema returned by `schema workspace` describes the JSON representation of `workspace.toml`;
+The schema returned by `schema workspace` describes the JSON representation of `batchspace.toml`;
 fields with defaults may be omitted from the manifest. See the
 [automation contracts](docs/AUTOMATION_CONTRACTS.md) for complete fields, compatibility rules, and
 safety boundaries. The repository-local skill provides the default workflow for agents.
@@ -214,7 +214,7 @@ safety boundaries. The repository-local skill provides the default workflow for 
 ## Documentation
 
 - [User guide](docs/USER_GUIDE.md): installation, workflows, commands, and troubleshooting.
-- [Workspace manifest](docs/WORKSPACE.md): `workspace.toml`, environment variables, and state directories.
+- [Workspace manifest](docs/WORKSPACE.md): `batchspace.toml`, environment variables, and state directories.
 - [Schedules](docs/SCHEDULES.md): declarations, validation, registration, logs, and platform differences.
 - [Development and release](docs/DEVELOPMENT.md): validation commands, implementation boundaries, and release checks.
 - [Architecture](docs/ARCHITECTURE.md): module responsibilities, concurrency, locking, and Git execution boundaries.

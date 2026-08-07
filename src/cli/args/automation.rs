@@ -41,6 +41,6 @@ pub struct SchemaArgs {
 pub enum SchemaDocument {
     /// The v1 machine-output envelope used by --output json.
     OperationResult,
-    /// The persisted workspace.toml data model expressed as JSON Schema.
+    /// The persisted batchspace.toml data model expressed as JSON Schema.
     Workspace,
 }

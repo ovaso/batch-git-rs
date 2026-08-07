@@ -191,7 +191,7 @@ fn workspace_schema() -> serde_json::Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "$id": "https://github.com/livenv/batch-git/schemas/workspace-v1.json",
-        "title": "workspace.toml v1 JSON representation",
+        "title": "batchspace.toml v1 JSON representation",
         "type": "object",
         "required": ["version", "created_at", "updated_at"],
         "properties": {

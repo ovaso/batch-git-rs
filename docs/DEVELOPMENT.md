@@ -6,7 +6,7 @@
 
 - `git2/libgit2`: local repository inspection, checkout, remote configuration, and branch configuration; network features are disabled.
 - System Git CLI: add, commit, restore/read-tree unstage, clone, fetch, push, merge, pull, and exact passthrough after `--`.
-- `workspace.toml`: declarative, portable workspace manifest.
+- `batchspace.toml`: declarative, portable workspace manifest.
 - `.workspace.lock`: serializes batch-git processes that may modify Git state or the manifest.
 - `automation result v1`: stable protocol for global `--output json|jsonl`; legacy subcommand `--json` is compatibility-only.
 - Rayon: bounded concurrency and stable result order.
@@ -99,7 +99,7 @@ When adding or changing CLI arguments, check together:
 - [ ] The version in `Cargo.toml` matches `CHANGELOG.md`.
 - [ ] Formatting, tests, Clippy, and the release build pass.
 - [ ] `batch-git --help` matches the user guide.
-- [ ] The `workspace.toml` example is accepted by the current schema.
+- [ ] The `batchspace.toml` example is accepted by the current schema.
 - [ ] macOS/Linux/Windows schedule constraints are documented.
 - [ ] Documentation does not describe `bit` as an automatically installed command.
 - [ ] Known limitations are recorded.

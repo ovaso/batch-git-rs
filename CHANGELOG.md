@@ -5,10 +5,13 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/). See `Cargo.toml` for the current package version.
 
-## [Unreleased]
+## [1.0.0] - 2026-08-07
 
 ### Changed
 
+- Renamed the workspace manifest from `workspace.toml` to `batchspace.toml` to avoid collisions.
+  This is a breaking discovery change: existing workspaces must rename the manifest explicitly;
+  batch-git never reads both filenames or creates a second manifest.
 - Documented the repository-only distribution and trust policy: generated code is not treated as
   release readiness, public package registries are intentionally excluded, and this GitHub
   repository plus its Releases define the project's distribution trust boundary. The Cargo manifest
@@ -104,7 +107,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ### Added
 
-- Added `batch-git merge --default` (short option `-d`), reading each repository's `default_branch` from `workspace.toml` and merging it into the current branch. Multi-component names are supported; when no local branch exists, resolution falls back only to that repository's `primary_remote` and does not fetch implicitly.
+- Added `batch-git merge --default` (short option `-d`), reading each repository's `default_branch` from `batchspace.toml` and merging it into the current branch. Multi-component names are supported; when no local branch exists, resolution falls back only to that repository's `primary_remote` and does not fetch implicitly.
 - Merge plans now expose `source_branch`, `source_mode`, and `remote_fallback` per repository so explicit, feature-environment, or per-repository default sources can be reviewed before apply.
 
 ### Fixed
@@ -128,7 +131,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Added the repository-local `batch-git-automation` skill for safely orchestrating multi-repository operations.
 - Added automation protocol v1: global `--output json|jsonl`, `--request-id`, machine receipts for every public built-in and schedule subcommand, and manifest-ordered batch repository event streams that do not contaminate stdout. Single-repository clone also emits a complete `started`, `repository_finished`, `finished` lifecycle.
 - Added `capabilities` and `schema operation-result|workspace`, allowing agents to discover protocol, safety boundaries, and JSON Schema from the current binary instead of guessing the installed version.
-- Added `--plan` / `--apply --expect-workspace-revision`: side-effect-free previews of resolved scope, risk, and side effects, with `workspace.toml` SHA-256 revision verification before execution.
+- Added `--plan` / `--apply --expect-workspace-revision`: side-effect-free previews of resolved scope, risk, and side effects, with `batchspace.toml` SHA-256 revision verification before execution.
 - Added `--non-interactive` and per-system-Git-child `--timeout`. Timeout terminates only the direct child and Git descendants may survive. Clone/restore destinations are preserved after timeout or failure to avoid recursively deleting concurrently written content.
 - The hidden native-schedule `native-run` child is always non-interactive, preventing a scheduler or terminal-less environment from waiting for Git authentication prompts. A stale revision found after the child acquires the lock remains `stale_workspace_revision` rather than becoming a generic scheduler error.
 - Added automation-protocol black-box tests for legacy/new JSON compatibility, structured argument errors, schedule receipts, and stale-plan rejection.
@@ -168,7 +171,7 @@ First stable release.
 ### Workspace management
 
 - Scan existing repositories, clone and register, restore from the manifest, fetch/prune, and safe sync.
-- Store repositories, remotes, default branches, and schedule declarations in `workspace.toml`.
+- Store repositories, remotes, default branches, and schedule declarations in `batchspace.toml`.
 - Validate manifests, write atomically, sanitize URL credentials, and lock the workspace.
 - Inspect workspace/repository information, status, current branches, lists, and JSON output.
 
@@ -203,7 +206,8 @@ First stable release.
 - Batch operations provide no cross-repository transactional rollback and may partially succeed.
 - Interactive Git children require `--jobs 1`.
 
-[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...HEAD
+[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...v1.0.0
 [0.4.5]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ovaso/batch-git-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ovaso/batch-git-rs/compare/v0.4.2...v0.4.3

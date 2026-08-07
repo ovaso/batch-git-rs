@@ -15,7 +15,7 @@ fn scan_discovers_repositories_and_passthrough_finds_parent_workspace() {
         .success()
         .stdout(predicate::str::contains("added service-one"));
 
-    let manifest = fs::read_to_string(workspace.path().join("workspace.toml")).unwrap();
+    let manifest = fs::read_to_string(workspace.path().join("batchspace.toml")).unwrap();
     assert!(manifest.contains("directory = \"service-one\""));
     assert!(manifest.contains("default_branch = \"main\""));
     assert!(!manifest.contains("branches"));
@@ -241,9 +241,9 @@ fn managed_clone_restore_fetch_and_checkout_form_a_closed_loop() {
         .success()
         .stdout(predicate::str::contains("registered service-two"));
 
-    let manifest = source.path().join("workspace.toml");
+    let manifest = source.path().join("batchspace.toml");
     let target = tempfile::tempdir().unwrap();
-    fs::copy(&manifest, target.path().join("workspace.toml")).unwrap();
+    fs::copy(&manifest, target.path().join("batchspace.toml")).unwrap();
 
     batch_git(target.path())
         .args(["--jobs=2", "restore"])
@@ -470,7 +470,7 @@ fn forget_only_changes_the_manifest_and_unknown_commands_are_not_forwarded() {
         .success()
         .stdout(predicate::str::contains("was not deleted"));
     assert!(workspace.path().join("service-three/.git").exists());
-    let manifest = fs::read_to_string(workspace.path().join("workspace.toml")).unwrap();
+    let manifest = fs::read_to_string(workspace.path().join("batchspace.toml")).unwrap();
     assert!(!manifest.contains("service-three"));
 
     batch_git(workspace.path())

@@ -1,9 +1,28 @@
 use super::*;
 
 #[test]
+fn legacy_workspace_toml_is_not_discovered() {
+    let fixture = WorkspaceFixture::new();
+    fs::rename(
+        fixture.workspace.join("batchspace.toml"),
+        fixture.workspace.join("workspace.toml"),
+    )
+    .expect("rename fixture manifest to the legacy filename");
+
+    let output = run(&fixture.workspace, &["--output", "json", "status"]);
+    assert_eq!(output.status.code(), Some(2));
+    let receipt = json_output(output);
+    assert_eq!(receipt["error"]["code"], "workspace_not_found");
+    assert!(
+        !fixture.workspace.join("batchspace.toml").exists(),
+        "legacy discovery must not silently recreate a second manifest"
+    );
+}
+
+#[test]
 fn merge_default_plan_exposes_each_declared_source_without_rewriting_the_manifest() {
     let fixture = WorkspaceFixture::new();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
     let manifest = fs::read_to_string(&manifest_path)
         .expect("read manifest")
         .replace(
@@ -37,7 +56,7 @@ fn merge_default_plan_exposes_each_declared_source_without_rewriting_the_manifes
     assert_eq!(
         fs::read(&manifest_path).expect("read manifest after merge plan"),
         before,
-        "merge planning must not rewrite workspace.toml"
+        "merge planning must not rewrite batchspace.toml"
     );
 }
 
@@ -94,7 +113,7 @@ fn initial_workspace_scan_and_clone_plans_keep_actionable_selection_without_a_re
         "plan data must not expose URL credentials"
     );
     assert!(
-        !root.join("workspace.toml").exists(),
+        !root.join("batchspace.toml").exists(),
         "initial workspace plans must not create a manifest"
     );
 }
@@ -128,8 +147,8 @@ fn failed_machine_clone_keeps_its_reserved_destination_for_inspection() {
         "a failed clone must retain its atomically reserved destination rather than recursively deleting it"
     );
     assert!(
-        !root.join("workspace.toml").exists(),
-        "a failed initial clone must not register or create a workspace manifest"
+        !root.join("batchspace.toml").exists(),
+        "a failed initial clone must not register or create a batchspace manifest"
     );
 }
 
@@ -192,7 +211,7 @@ fn operation_result_schema_requires_the_nullable_error_field() {
 fn invalid_workspace_manifest_has_a_stable_error_code() {
     let temporary_directory = tempfile::tempdir().expect("create temporary fixture");
     fs::write(
-        temporary_directory.path().join("workspace.toml"),
+        temporary_directory.path().join("batchspace.toml"),
         r#"version = 2
 created_at = "2026-01-01T00:00:00Z"
 updated_at = "2026-01-01T00:00:00Z"
@@ -213,7 +232,7 @@ fn workspace_manifest_rejects_repository_symlinks_outside_the_workspace() {
     use std::os::unix::fs::symlink;
 
     let fixture = WorkspaceFixture::new();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
     let manifest = fs::read_to_string(&manifest_path)
         .expect("read fixture manifest")
         .replace("directory = \"service\"", "directory = \"escape\"");
@@ -252,7 +271,7 @@ fn plan_restore_uses_the_same_invoking_root_as_restore() {
     assert!(
         response["error"]["message"]
             .as_str()
-            .is_some_and(|message| message.contains("restore requires workspace.toml")),
+            .is_some_and(|message| message.contains("restore requires batchspace.toml")),
         "restore planning must reject a nested invocation instead of planning a parent workspace"
     );
 }
@@ -260,7 +279,7 @@ fn plan_restore_uses_the_same_invoking_root_as_restore() {
 #[test]
 fn apply_rejects_a_stale_workspace_revision_as_a_structured_error() {
     let fixture = WorkspaceFixture::new();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
 
     let plan = json_output(run(
         &fixture.workspace,
@@ -302,6 +321,6 @@ fn apply_rejects_a_stale_workspace_revision_as_a_structured_error() {
     assert_eq!(
         fs::read_to_string(&manifest_path).expect("read manifest after rejected apply"),
         changed_manifest,
-        "a rejected apply must not rewrite workspace.toml"
+        "a rejected apply must not rewrite batchspace.toml"
     );
 }

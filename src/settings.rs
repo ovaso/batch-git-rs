@@ -42,7 +42,7 @@ pub(crate) fn environment_variables(resolved_jobs: usize) -> Result<Vec<Environm
         ),
         environment_variable(
             "BATCH_GIT_WORKSPACE",
-            "Absolute workspace override for commands that discover workspace.toml.",
+            "Absolute workspace override for commands that discover batchspace.toml.",
             "<auto-discover>",
             workspace,
         ),

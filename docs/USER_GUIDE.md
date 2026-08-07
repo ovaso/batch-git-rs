@@ -12,18 +12,18 @@ A batch-git workspace looks like this:
 
 ```text
 workspace/
-├── workspace.toml
+├── batchspace.toml
 ├── service-api/
 ├── service-web/
 └── service-worker/
 ```
 
-Every subdirectory is an independent Git repository. `workspace.toml` stores only stable information
+Every subdirectory is an independent Git repository. `batchspace.toml` stores only stable information
 required to restore repositories; it does not cache the current branch, HEAD, branch lists, or dirty
 state.
 
 Except for `scan` and `restore`, normal commands search upward from the current directory for the
-nearest `workspace.toml`. Set the absolute-path variable `BATCH_GIT_WORKSPACE` to select a workspace
+nearest `batchspace.toml`. Set the absolute-path variable `BATCH_GIT_WORKSPACE` to select a workspace
 explicitly. `scan` and `restore` always treat the current directory as the workspace root.
 
 ## 2. Installation and verification
@@ -101,7 +101,7 @@ batch-git scan
 batch-git scan --depth 2
 ```
 
-`scan` creates or incrementally extends `workspace.toml`; it never removes existing registrations.
+`scan` creates or incrementally extends `batchspace.toml`; it never removes existing registrations.
 The default scan depth is `1` and can be changed with `--depth` or `BATCH_GIT_SCAN_DEPTH`.
 
 ### 3.2 Cloning and registering
@@ -328,7 +328,7 @@ mappings. CLI options win: `--uc` / `--update-current` and `--rs` / `--refresh-s
 behaviors, while `--no-update-current` and `--no-refresh-source` disable them. The earlier generic
 variables `BATCH_GIT_MERGE_UPDATE_CURRENT` and `BATCH_GIT_MERGE_REFRESH_SOURCE` have been removed.
 
-`merge --default` reads each repository's own `default_branch` from `workspace.toml`, making it
+`merge --default` reads each repository's own `default_branch` from `batchspace.toml`, making it
 suitable for workspaces with different default names or multi-component branch paths. Resolution
 prefers a local branch. If absent, only that repository's `primary_remote` is searched. Without
 source refresh it does not fetch, and a separate `batch-git fetch` does not update an existing local
@@ -475,7 +475,7 @@ batch-git forget service-old
 batch-git forget services/legacy
 ```
 
-`forget` removes registrations from `workspace.toml` only. It never deletes repository directories or
+`forget` removes registrations from `batchspace.toml` only. It never deletes repository directories or
 Git data.
 
 ## 10. Concurrency, output, and color
@@ -504,7 +504,7 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 repository events ordered by manifest position rather than completion time. A single clone also emits
 one `repository_finished`; on failure, the requested destination identifies the result. `--plan`
 performs no writes or network access and lists effective scope, risk, and expected side effects.
-`--apply` verifies the `workspace.toml` revision before execution. This cannot lock remote state,
+`--apply` verifies the `batchspace.toml` revision before execution. This cannot lock remote state,
 HEAD, the index, or the working tree, so runtime Git checks and per-repository results remain final.
 Schedule has separate `schedule plan`, `doctor`, `generate`, and `--dry-run` flows.
 
@@ -516,7 +516,7 @@ batch-git schema operation-result
 batch-git --output json schema workspace
 ```
 
-The workspace schema describes the JSON input representation of `workspace.toml`; `repositories`,
+The workspace schema describes the JSON input representation of `batchspace.toml`; `repositories`,
 `schedules`, and defaulted schedule fields may be omitted.
 
 ## 11. Exit codes
@@ -532,7 +532,7 @@ source of truth.
 
 ## 12. Troubleshooting
 
-### `workspace.toml` cannot be found
+### `batchspace.toml` cannot be found
 
 Confirm the current directory is inside the workspace or set an absolute path:
 

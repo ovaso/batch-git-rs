@@ -12,17 +12,17 @@
 
 ```text
 workspace/
-├── workspace.toml
+├── batchspace.toml
 ├── service-api/
 ├── service-web/
 └── service-worker/
 ```
 
-每个子目录是独立 Git 仓库；`workspace.toml` 只保存恢复仓库所需的稳定信息，
+每个子目录是独立 Git 仓库；`batchspace.toml` 只保存恢复仓库所需的稳定信息，
 不会缓存当前分支、HEAD、分支列表或 dirty 状态。
 
 除 `scan`、`restore` 外，普通命令会从当前目录向上查找最近的
-`workspace.toml`。也可用绝对路径环境变量 `BATCH_GIT_WORKSPACE` 明确指定工作区。
+`batchspace.toml`。也可用绝对路径环境变量 `BATCH_GIT_WORKSPACE` 明确指定工作区。
 `scan` 和 `restore` 始终以当前目录为工作区根目录。
 
 ## 2. 安装与验证
@@ -99,7 +99,7 @@ batch-git scan
 batch-git scan --depth 2
 ```
 
-`scan` 创建或增量补充 `workspace.toml`，不会删除已有登记。默认扫描深度为 `1`，
+`scan` 创建或增量补充 `batchspace.toml`，不会删除已有登记。默认扫描深度为 `1`，
 可用 `--depth` 或 `BATCH_GIT_SCAN_DEPTH` 调整。
 
 ### 3.2 克隆并登记
@@ -311,7 +311,7 @@ feature 合入它。当前目标分支没有 upstream（例如仅本地的协作
 `--no-update-current` 和 `--no-refresh-source` 显式关闭。已移除早期的泛化环境变量
 `BATCH_GIT_MERGE_UPDATE_CURRENT` 与 `BATCH_GIT_MERGE_REFRESH_SOURCE`。
 
-`merge --default` 分别读取每个仓库在 `workspace.toml` 中声明的 `default_branch`，将其合入
+`merge --default` 分别读取每个仓库在 `batchspace.toml` 中声明的 `default_branch`，将其合入
 该仓库的当前分支，适合默认分支名称不同或包含多级路径的工作区。解析时优先使用本地同名分支；
 本地不存在时，只在该仓库的 `primary_remote` 中寻找 remote-tracking 分支。它不 fetch，且
 单独执行 `batch-git fetch` 不会更新已有的本地默认分支；需要远端最新内容时，应先确认本地默认
@@ -446,7 +446,7 @@ batch-git forget service-old
 batch-git forget services/legacy
 ```
 
-`forget` 只删除 `workspace.toml` 中的登记，不删除仓库目录或任何 Git 数据。
+`forget` 只删除 `batchspace.toml` 中的登记，不删除仓库目录或任何 Git 数据。
 
 ## 10. 并发、输出和颜色
 
@@ -471,7 +471,7 @@ batch-git --output json --apply --expect-workspace-revision 'sha256:…' pull se
 `--output json` 每次只输出一个 v1 receipt；`--output jsonl` 每行输出一个事件，仓库事件按
 清单顺序而非完成时间输出。单仓库 `clone` 同样发送一个 `repository_finished` 事件，失败时以
 请求的目标目录标识该结果。`--plan` 不做写入或网络访问，列出实际范围、风险与预期副作用；`--apply` 在执行前核对
-`workspace.toml` revision。该核对不能锁定远端、HEAD、index 或工作树状态，因此仍应把 Git 的执行期
+`batchspace.toml` revision。该核对不能锁定远端、HEAD、index 或工作树状态，因此仍应把 Git 的执行期
 检查和仓库级结果当作最终事实。schedule 有独立的 `schedule plan`、`doctor`、`generate` 和
 `--dry-run` 流程。
 
@@ -483,7 +483,7 @@ batch-git schema operation-result
 batch-git --output json schema workspace
 ```
 
-`schema workspace` 输出的 schema 对应 `workspace.toml` 的 JSON 输入表示；`repositories`、
+`schema workspace` 输出的 schema 对应 `batchspace.toml` 的 JSON 输入表示；`repositories`、
 `schedules` 和 schedule 的默认字段可以省略，不必先将默认值补齐。
 
 ## 11. 退出码
@@ -498,7 +498,7 @@ batch-git --output json schema workspace
 
 ## 12. 常见问题
 
-### 找不到 `workspace.toml`
+### 找不到 `batchspace.toml`
 
 确认当前目录位于工作区内，或设置绝对路径：
 

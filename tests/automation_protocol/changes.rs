@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn plan_sync_returns_a_workspace_revision_without_rewriting_the_manifest() {
     let fixture = WorkspaceFixture::new();
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
     let before = fs::read(&manifest_path).expect("read manifest before plan");
 
     let receipt = json_output(run(
@@ -15,7 +15,7 @@ fn plan_sync_returns_a_workspace_revision_without_rewriting_the_manifest() {
     assert_eq!(
         fs::read(&manifest_path).expect("read manifest after plan"),
         before,
-        "planning must not rewrite workspace.toml"
+        "planning must not rewrite batchspace.toml"
     );
 }
 
@@ -94,7 +94,7 @@ fn local_change_commands_emit_stable_json_receipts_and_noop_reasons() {
 fn local_change_plans_expose_parameters_without_mutating_repository_state() {
     let fixture = WorkspaceFixture::new();
     let repository = fixture.workspace.join("service");
-    let manifest_path = fixture.workspace.join("workspace.toml");
+    let manifest_path = fixture.workspace.join("batchspace.toml");
 
     fs::write(repository.join("README.md"), "planned staged content\n")
         .expect("modify tracked fixture file");
@@ -152,7 +152,7 @@ fn local_change_plans_expose_parameters_without_mutating_repository_state() {
     assert_eq!(
         fs::read(&manifest_path).expect("read manifest after plans"),
         manifest_before,
-        "local-change planning must not rewrite workspace.toml"
+        "local-change planning must not rewrite batchspace.toml"
     );
     assert_eq!(git_stdout(&repository, &["rev-parse", "HEAD"]), head_before);
     assert_eq!(

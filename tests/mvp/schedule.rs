@@ -13,7 +13,7 @@ fn schedule_plans_runs_and_generates_native_definitions() {
         .assert()
         .success();
 
-    let manifest_path = workspace.path().join("workspace.toml");
+    let manifest_path = workspace.path().join("batchspace.toml");
     let mut manifest = fs::read_to_string(&manifest_path).unwrap();
     manifest.push_str(
         r#"
@@ -320,7 +320,7 @@ fn schedule_register_updates_same_name_and_unregisters() {
         .assert()
         .success();
 
-    let manifest_path = workspace.path().join("workspace.toml");
+    let manifest_path = workspace.path().join("batchspace.toml");
     batch_git(workspace.path())
         .args([
             "schedule",
