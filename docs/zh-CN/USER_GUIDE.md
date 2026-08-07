@@ -41,13 +41,13 @@ Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 可使用正式 release。�
 
 ```sh
 VERSION=vX.Y.Z
-curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+curl -LO "https://github.com/ovaso/batch-git-rs/releases/download/$VERSION/install.sh"
 sh install.sh --version "$VERSION"
 ```
 
 ```powershell
 $Version = "vX.Y.Z"
-Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Version/install.ps1" -OutFile install.ps1
 .\install.ps1 -Version $Version
 ```
 
@@ -55,7 +55,7 @@ Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Versio
 签发的构建 provenance：
 
 ```sh
-gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
 归档包含 `completions/`。Unix 安装器会安装 Bash、Zsh 和 Fish 补全；如果自定义前缀不在 shell
@@ -64,12 +64,10 @@ PowerShell 可 dot-source `<prefix>\share\batch-git\completions\batch-git.ps1`�
 
 ### 2.2 从源码构建
 
-源码构建另需 Rust 1.88 或更新工具链：
+当前 crate 尚未发布到 crates.io。从源码安装需要已 checkout 的仓库和 Rust 1.88 或更新工具链：
 
 ```sh
-cargo install --locked batch-git
-# 已安装 cargo-binstall 时，可按 release 元数据选择预编译归档：
-cargo binstall batch-git
+cargo install --locked --path .
 
 cargo build --release
 ./target/release/batch-git --help

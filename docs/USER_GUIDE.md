@@ -42,13 +42,13 @@ default:
 
 ```sh
 VERSION=vX.Y.Z
-curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+curl -LO "https://github.com/ovaso/batch-git-rs/releases/download/$VERSION/install.sh"
 sh install.sh --version "$VERSION"
 ```
 
 ```powershell
 $Version = "vX.Y.Z"
-Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Version/install.ps1" -OutFile install.ps1
 .\install.ps1 -Version $Version
 ```
 
@@ -56,7 +56,7 @@ For manual installation, download the matching `.sha256` or combined `SHA256SUMS
 verify build provenance signed by the release workflow:
 
 ```sh
-gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
 Archives contain `completions/`. The Unix installer installs Bash, Zsh, and Fish completions. If a
@@ -66,12 +66,11 @@ custom prefix is not in the shell's default search path, add `<prefix>/share/zsh
 
 ### 2.2 Building from source
 
-Source builds additionally require Rust 1.88 or newer:
+The crate is not published to crates.io yet. Source installation requires a checked-out copy of the
+repository and Rust 1.88 or newer:
 
 ```sh
-cargo install --locked batch-git
-# When cargo-binstall is installed, it can select the prebuilt archive from release metadata:
-cargo binstall batch-git
+cargo install --locked --path .
 
 cargo build --release
 ./target/release/batch-git --help

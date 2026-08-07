@@ -110,7 +110,7 @@ When adding or changing CLI arguments, check together:
 - [ ] The release commit reached `main` through a pull request and all required checks passed.
 - [ ] The remote `v*` tag points at that exact merged release commit.
 - [ ] The tag, GitHub Release, binary names, and SHA-256 checksums agree.
-- [ ] `gh attestation verify <archive> --repo livenv/batch-git` verifies the release archive.
+- [ ] `gh attestation verify <archive> --repo ovaso/batch-git-rs` verifies the release archive.
 - [ ] `sh -n install.sh`, the PowerShell parser, and all four completion checks pass.
 - [ ] English and Simplified Chinese documentation links are valid and translations are synchronized.
 - [ ] `SECURITY.md`, `COMPATIBILITY.md`, and the automation contracts still match behavior.

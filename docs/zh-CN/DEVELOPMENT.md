@@ -107,7 +107,7 @@ GitHub Release。
 - [ ] release 提交通过 pull request 进入 `main`，且所有必需检查均通过；
 - [ ] 远端 `v*` tag 精确指向该合并后的 release 提交；
 - [ ] tag、GitHub Release、二进制名与 SHA-256 校验和相互对应；
-- [ ] `gh attestation verify <archive> --repo livenv/batch-git` 能验证发布归档；
+- [ ] `gh attestation verify <archive> --repo ovaso/batch-git-rs` 能验证发布归档；
 - [ ] `sh -n install.sh`、PowerShell parser 和四种补全文件检查通过；
 - [ ] 中英文文档链接有效且翻译保持同步；
 - [ ] `SECURITY.md`、`COMPATIBILITY.md` 和 automation contracts 仍与行为一致。

@@ -1,7 +1,7 @@
 # batch-git
 
 [![CI](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ovaso/batch-git-rs)](https://github.com/ovaso/batch-git-rs/releases)
+[![Release](https://img.shields.io/github/v/release/ovaso/batch-git-rs?sort=semver&display_name=tag)](https://github.com/ovaso/batch-git-rs/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [简体中文](README.zh-CN.md)
@@ -36,7 +36,7 @@ require an explicit version:
 ```sh
 # macOS / Linux: download and review the installer before installing to ~/.local.
 VERSION=vX.Y.Z
-curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+curl -LO "https://github.com/ovaso/batch-git-rs/releases/download/$VERSION/install.sh"
 sh install.sh --version "$VERSION"
 
 # Optional: install to another user-writable prefix.
@@ -47,24 +47,24 @@ PowerShell:
 
 ```powershell
 $Version = "vX.Y.Z"
-Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Version/install.ps1" -OutFile install.ps1
 .\install.ps1 -Version $Version
 ```
 
 The installers verify the SHA-256 file published beside each archive. You can also download and
-verify an archive manually from [GitHub Releases](https://github.com/livenv/batch-git/releases).
+verify an archive manually from [GitHub Releases](https://github.com/ovaso/batch-git-rs/releases).
 If GitHub CLI is available, verify the signed provenance as well:
 
 ```sh
-gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-Building from source requires a Rust toolchain and system Git:
+The crate is not published to crates.io yet. Use the release installers above, or build from a
+checked-out source tree with a Rust toolchain and system Git:
 
 ```sh
-# Install from crates.io, or let cargo-binstall use the release metadata.
-cargo install --locked batch-git
-cargo binstall batch-git
+# Install the current checkout.
+cargo install --locked --path .
 
 # Build only.
 cargo build --release
