@@ -10,8 +10,6 @@
 `workspace.toml` manifest to manage multiple independent Git repositories; the workspace itself
 does not need to be a Git repository.
 
-Latest released version: `0.4.5`.
-
 ## Highlights
 
 - Scan existing directories and create a workspace manifest.
@@ -27,11 +25,27 @@ amend, empty commit, or hook bypass. The tool also never merges, rebases, stashe
 a working tree unless explicitly requested. If clone or restore fails or times out, the destination
 is preserved for inspection and must be handled explicitly before retrying.
 
+## Distribution and trust
+
+Generated code is cheap; maintenance commitments are not.
+
+Accordingly, this project does not use public package registries to make quality, maintenance, or
+security commitments that it cannot sustain over the long term.
+
+This project may use AI-assisted development, but it does not treat "it runs" as evidence that
+software is ready for distribution. Trust comes from explicit safety boundaries, tests, review,
+documentation, and traceable release processes, not from how the code was produced.
+
+`batch-git` is intentionally not published to crates.io or other package registries and does not
+claim public package names it cannot continuously maintain. This GitHub repository and its Releases
+are the only authoritative distribution sources. Same-named packages elsewhere are outside this
+project's release process and trust boundary.
+
 ## Installation
 
-Official releases provide prebuilt archives, SHA-256 checksums, and GitHub artifact attestations
-for Linux x86_64, macOS x86_64/arm64, and Windows x86_64. The installers never use `sudo` and
-require an explicit version:
+Tagged GitHub Releases may contain prebuilt archives, SHA-256 checksums, and GitHub artifact
+attestations for Linux x86_64, macOS x86_64/arm64, and Windows x86_64. The included installers never
+use `sudo` and require an explicit version:
 
 ```sh
 # macOS / Linux: download and review the installer before installing to ~/.local.
@@ -59,8 +73,7 @@ If GitHub CLI is available, verify the signed provenance as well:
 gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-The crate is not published to crates.io yet. Use the release installers above, or build from a
-checked-out source tree with a Rust toolchain and system Git:
+To build from source, use a checked-out source tree with a Rust toolchain and system Git:
 
 ```sh
 # Install the current checkout.
@@ -77,9 +90,10 @@ cargo build --release --no-default-features
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
 
-Release archives include Bash, Zsh, Fish, and PowerShell completions. The installer copies the
-completion files for the current platform into the selected user prefix. If your shell does not
-discover that prefix automatically, follow the [user guide](docs/USER_GUIDE.md#2-installation-and-verification).
+Current release archives include Bash, Zsh, Fish, and PowerShell completions. The installer copies
+the completion files for the current platform into the selected user prefix. If your shell does not
+discover that prefix automatically, follow the
+[user guide](docs/USER_GUIDE.md#2-installation-and-verification).
 
 The default feature set includes `schedule`, so normal builds retain the complete command surface.
 Disabling default features only removes the `schedule` command and native scheduler integration
@@ -93,8 +107,8 @@ Make sure the installation directory is on `PATH`:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-The installed binary and official command name are always `batch-git`. `bit` is only an optional
-user-defined shell alias; see the [user guide](docs/USER_GUIDE.md#2-installation-and-verification).
+The installed binary is named `batch-git`. `bit` is only an optional user-defined shell alias; see
+the [user guide](docs/USER_GUIDE.md#2-installation-and-verification).
 
 ## Quick start
 
@@ -204,7 +218,7 @@ safety boundaries. The repository-local skill provides the default workflow for 
 - [Schedules](docs/SCHEDULES.md): declarations, validation, registration, logs, and platform differences.
 - [Development and release](docs/DEVELOPMENT.md): validation commands, implementation boundaries, and release checks.
 - [Architecture](docs/ARCHITECTURE.md): module responsibilities, concurrency, locking, and Git execution boundaries.
-- [Compatibility](docs/COMPATIBILITY.md): Rust, Git, platform, and scheduler support matrix.
+- [Compatibility](docs/COMPATIBILITY.md): validated Rust, Git, platform, and scheduler matrix.
 - [Automation contracts](docs/AUTOMATION_CONTRACTS.md): versioned JSON/JSONL, plan/apply, schemas, and exit codes for CI and agents.
 - [Changelog](CHANGELOG.md): release-level changes and known limitations.
 

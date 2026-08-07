@@ -34,11 +34,11 @@ Prerequisites:
 - For scheduled jobs: macOS uses `launchd`, Linux requires `systemd --user`, and Windows uses Task Scheduler. The first Windows implementation does not support cron declarations.
 - Set schedule timezones with `BATCH_GIT_TZ`; otherwise the system timezone is used.
 
-### 2.1 Prebuilt releases
+### 2.1 GitHub Release assets
 
-Official releases support Linux x86_64, macOS x86_64/arm64, and Windows x86_64. Installers require
-an explicit `vX.Y.Z` version, verify SHA-256, never invoke `sudo`, and install into a user directory by
-default:
+Tagged GitHub Releases may contain prebuilt archives for Linux x86_64, macOS x86_64/arm64, and
+Windows x86_64. The included installers require an explicit `vX.Y.Z` version, verify SHA-256, never
+invoke `sudo`, and install into a user directory by default:
 
 ```sh
 VERSION=vX.Y.Z
@@ -59,15 +59,15 @@ verify build provenance signed by the release workflow:
 gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-Archives contain `completions/`. The Unix installer installs Bash, Zsh, and Fish completions. If a
-custom prefix is not in the shell's default search path, add `<prefix>/share/zsh/site-functions` to
-`fpath` or source the corresponding file directly. PowerShell users can dot-source
-`<prefix>\share\batch-git\completions\batch-git.ps1`.
+Current archives contain `completions/`. The Unix installer installs Bash, Zsh, and Fish completions.
+If a custom prefix is not in the shell's default search path, add
+`<prefix>/share/zsh/site-functions` to `fpath` or source the corresponding file directly. PowerShell
+users can dot-source `<prefix>\share\batch-git\completions\batch-git.ps1`.
 
 ### 2.2 Building from source
 
-The crate is not published to crates.io yet. Source installation requires a checked-out copy of the
-repository and Rust 1.88 or newer:
+The project intentionally does not publish to crates.io or other package registries. Source
+installation requires a checked-out copy of this repository and Rust 1.88 or newer:
 
 ```sh
 cargo install --locked --path .

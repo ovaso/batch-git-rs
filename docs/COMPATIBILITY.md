@@ -4,25 +4,26 @@
 
 ## Toolchain
 
-| Component | Supported baseline | Notes |
+| Component | Validated baseline | Notes |
 |---|---:|---|
 | Rust | 1.88 | Minimum toolchain required by the current source; CI tests both this version and stable. |
 | Git | 2.30+ | System Git is required for add, commit, restore/read-tree unstage, clone, fetch, pull, push, merge, and passthrough. Use a maintained current release when possible. |
-| workspace.toml | version 1 | The only currently supported manifest schema. |
+| workspace.toml | version 1 | The only manifest schema accepted by the current source. |
 
 ## Platforms
 
-| Platform | CLI | Schedule backend | CI build |
+| Platform | CLI validation | Schedule backend | Artifact workflow |
 |---|---|---|---|
-| Linux x86_64 | Supported | `systemd --user` | Release archive |
-| macOS arm64/x86_64 | Supported | `launchd` | Release archive |
-| Windows x86_64 | Supported | Task Scheduler | Release archive |
+| Linux x86_64 | CI build | `systemd --user` | GitHub Release workflow |
+| macOS arm64/x86_64 | CI build | `launchd` | GitHub Release workflow |
+| Windows x86_64 | CI build | Task Scheduler | GitHub Release workflow |
 
-CI builds release binaries on all three operating systems. Archives include the license, both READMEs,
-and Bash/Zsh/Fish/PowerShell completions, and publish per-file and combined SHA-256 checksums plus
-GitHub build provenance attestations. Real registration still depends on runner user permissions and
-platform service availability. Before release, run `schedule doctor` and `generate` on each target
-platform and manually verify register/unregister where needed.
+The current CI configuration builds release binaries on all three operating systems. Archives
+include the license, both READMEs, and Bash/Zsh/Fish/PowerShell completions, with per-file and
+combined SHA-256 checksums plus GitHub build provenance attestations. Real registration still
+depends on runner user permissions and platform service availability. Before release, run
+`schedule doctor` and `generate` on each target platform and manually verify register/unregister
+where needed.
 
 ## Known platform constraints
 
@@ -35,5 +36,7 @@ platform and manually verify register/unregister where needed.
 - `--timeout` terminates the directly launched Git child. batch-git reports a timeout but cannot guarantee termination of all authentication, transport, filter, hook, or signing descendants, which may continue running. It also does not limit workspace-lock waits. After a commit timeout, local refs may already have changed; inspect the actual repository state.
 - Registered native schedules always run non-interactive Git children. Configure credentials in advance; terminal authentication prompts are unavailable.
 
-Compatibility changes are documented first in the `Unreleased` section of both changelogs. Systems
-or Git versions not listed here may work but are not part of the release support commitment.
+Compatibility changes are documented first in the `Unreleased` section of both changelogs. The
+entries above describe current validation and build coverage, not a promise of future support,
+response time, fixes, or releases. Systems and Git versions not listed here may still work but are
+outside the documented validation scope.

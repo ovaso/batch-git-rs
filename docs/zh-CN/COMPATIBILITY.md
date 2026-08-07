@@ -4,23 +4,24 @@
 
 ## 工具链
 
-| 项目 | 支持基线 | 说明 |
+| 项目 | 验证基线 | 说明 |
 |---|---:|---|
 | Rust | 1.88 | 当前源码所需的最低工具链；CI 同时测试此版本和 stable。 |
 | Git | 2.30+ | 需要系统 Git 处理 add、commit、restore/read-tree unstage、clone、fetch、pull、push、merge 与透传；建议使用维护中的最新版。 |
-| workspace.toml | version 1 | 当前唯一支持的清单 schema。 |
+| workspace.toml | version 1 | 当前源码接受的唯一清单 schema。 |
 
 ## 平台
 
-| 平台 | CLI | schedule 后端 | CI 构建 |
+| 平台 | CLI 验证 | schedule 后端 | 产物 workflow |
 |---|---|---|---|
-| Linux x86_64 | 支持 | `systemd --user` | release 归档 |
-| macOS arm64/x86_64 | 支持 | `launchd` | release 归档 |
-| Windows x86_64 | 支持 | Task Scheduler | release 归档 |
+| Linux x86_64 | CI 构建 | `systemd --user` | GitHub Release workflow |
+| macOS arm64/x86_64 | CI 构建 | `launchd` | GitHub Release workflow |
+| Windows x86_64 | CI 构建 | Task Scheduler | GitHub Release workflow |
 
-CI 在三种操作系统构建 release 二进制；归档包含许可证、中英文 README 和 Bash/Zsh/Fish/PowerShell
-补全，并发布逐文件与统一 SHA-256 以及 GitHub build provenance attestation。真实注册行为仍依赖 runner 用户权限和平台服务可用性。
-发布前应在目标平台执行 `schedule doctor`、`generate`，并按需人工验证 register/unregister。
+当前 CI 配置会在三种操作系统构建 release 二进制；归档包含许可证、中英文 README 和
+Bash/Zsh/Fish/PowerShell 补全，以及逐文件与统一 SHA-256 和 GitHub build provenance
+attestation。真实注册行为仍依赖 runner 用户权限和平台服务可用性。发布前应在目标平台执行
+`schedule doctor`、`generate`，并按需人工验证 register/unregister。
 
 ## 已知平台约束
 
@@ -39,5 +40,6 @@ CI 在三种操作系统构建 release 二进制；归档包含许可证、中�
 - 已注册的原生 schedule 始终以非交互 Git child 运行；需要使用预先配置的凭据，不能依赖
   终端认证提示。
 
-兼容性变更会先写入两份 CHANGELOG 的 `Unreleased`。不在本表中的系统或 Git 版本可尝试使用，
-但不构成发布支持承诺。
+兼容性变更会先写入两份 CHANGELOG 的 `Unreleased`。上述条目只描述当前验证与构建覆盖范围，
+不承诺未来支持、响应时限、修复或发布。不在本表中的系统或 Git 版本仍可尝试使用，但不在文档
+声明的验证范围内。
