@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "livenv/batch-git"
+$Repository = "ovaso/batch-git-rs"
 $Target = "x86_64-pc-windows-msvc"
 $Archive = "batch-git-$Target.tar.gz"
 

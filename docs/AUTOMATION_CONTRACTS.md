@@ -250,6 +250,11 @@ filled in. It accepts omitted defaults such as empty `repositories` / `schedules
 `enabled`, `action`, `timezone`, and `overlap`. The schema uses `additionalProperties: true`, so
 consumers should validate core fields while allowing future additions.
 
+The canonical schema identifiers are
+`https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json` and
+`https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json`. Treat `$id` as the stable schema
+identifier returned by the binary; obtain the actual current document through the `schema` command.
+
 ## Command coverage and legacy JSON
 
 Every public command—including `env list` / `env ls`, `scan`, `clone`, `restore`, `add`, `commit`,

@@ -226,6 +226,11 @@ batch-git --output json schema workspace
 `action`、`timezone` 和 `overlap`。Schema 使用 `additionalProperties: true`，因此消费者应验证
 核心字段但允许未来新增字段。
 
+规范 schema 标识分别为
+`https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json` 和
+`https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json`。`$id` 是二进制返回的稳定
+schema 标识；实际当前文档应通过 `schema` 命令获取。
+
 ## 命令覆盖与旧 JSON
 
 所有公开命令（包括 `env list` / `env ls`、`scan`、`clone`、`restore`、`add`、`commit`、

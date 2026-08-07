@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repository="livenv/batch-git"
+repository="ovaso/batch-git-rs"
 version=""
 prefix="${BATCH_GIT_INSTALL_PREFIX:-${HOME:?HOME is required}/.local}"
 

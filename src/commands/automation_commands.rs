@@ -149,7 +149,7 @@ pub(super) fn schema(arguments: SchemaArgs, automation: &AutomationOptions) -> R
 fn operation_result_schema() -> serde_json::Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/livenv/batch-git/schemas/operation-result-v1.json",
+        "$id": "https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json",
         "title": "batch-git automation result v1",
         "type": "object",
         "required": ["api_version", "command", "exit_code", "ok", "data", "error"],
@@ -190,7 +190,7 @@ fn operation_result_schema() -> serde_json::Value {
 fn workspace_schema() -> serde_json::Value {
     json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "$id": "https://github.com/livenv/batch-git/schemas/workspace-v1.json",
+        "$id": "https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json",
         "title": "workspace.toml v1 JSON representation",
         "type": "object",
         "required": ["version", "created_at", "updated_at"],

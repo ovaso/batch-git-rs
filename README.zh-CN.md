@@ -1,7 +1,7 @@
 # batch-git
 
 [![CI](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ovaso/batch-git-rs/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/ovaso/batch-git-rs)](https://github.com/ovaso/batch-git-rs/releases)
+[![Release](https://img.shields.io/github/v/release/ovaso/batch-git-rs?sort=semver&display_name=tag)](https://github.com/ovaso/batch-git-rs/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [English](README.md)
@@ -34,7 +34,7 @@ SHA-256 校验和及 GitHub artifact attestation。安装器不会使用 `sudo`�
 ```sh
 # macOS / Linux：先下载并审阅安装器，再安装到 ~/.local。
 VERSION=vX.Y.Z
-curl -LO "https://github.com/livenv/batch-git/releases/download/$VERSION/install.sh"
+curl -LO "https://github.com/ovaso/batch-git-rs/releases/download/$VERSION/install.sh"
 sh install.sh --version "$VERSION"
 
 # 可选：安装到其他用户可写前缀。
@@ -45,23 +45,23 @@ PowerShell：
 
 ```powershell
 $Version = "vX.Y.Z"
-Invoke-WebRequest "https://github.com/livenv/batch-git/releases/download/$Version/install.ps1" -OutFile install.ps1
+Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Version/install.ps1" -OutFile install.ps1
 .\install.ps1 -Version $Version
 ```
 
-安装器会验证与归档一同发布的 SHA-256。也可从 [GitHub Releases](https://github.com/livenv/batch-git/releases)
+安装器会验证与归档一同发布的 SHA-256。也可从 [GitHub Releases](https://github.com/ovaso/batch-git-rs/releases)
 手工下载并校验；如已安装 GitHub CLI，可进一步验证签名 provenance：
 
 ```sh
-gh attestation verify batch-git-<target>.tar.gz --repo livenv/batch-git
+gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-从源码构建需要 Rust 工具链和系统 Git：
+当前 crate 尚未发布到 crates.io。请使用上述 release 安装器，或在已 checkout 的源码目录中
+使用 Rust 工具链和系统 Git 构建：
 
 ```sh
-# crates.io 安装；也可用 cargo-binstall 读取 release 元数据安装预编译归档。
-cargo install --locked batch-git
-cargo binstall batch-git
+# 安装当前 checkout。
+cargo install --locked --path .
 
 # 仅构建
 cargo build --release

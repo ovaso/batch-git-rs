@@ -13,7 +13,7 @@
 | 能力 | 命令 | agent 使用规则 |
 |---|---|---|
 | 能力发现 | `capabilities` | 每次新环境的起点；读取协议版本、格式、命令、安全边界。 |
-| schema 发现 | `schema operation-result`、`schema workspace` | 校验 receipt 核心字段，同时允许 future optional fields；workspace schema 接受省略的默认清单字段。 |
+| schema 发现 | `schema operation-result`、`schema workspace` | 校验 receipt 核心字段，同时允许 future optional fields；workspace schema 接受省略的默认清单字段，规范 `$id` 使用 `https://github.com/ovaso/batch-git-rs/schemas/` 命名空间。 |
 | 一次性 receipt | `--output json <command>` | 新自动化的默认格式；stdout 只能有一个 v1 JSON 文档。 |
 | 长任务事件 | `--output jsonl <command>` | 消费 `started`、`repository_finished`、`finished`；批量操作及单仓库 `clone` 都产生仓库终态事件，事件按清单顺序输出而非完成时间顺序；以最终事件和退出码结论。 |
 | 关联追踪 | `--request-id <id>` | 将调用方的 1–128 字符非控制 ID 回显到所有 machine output。 |
