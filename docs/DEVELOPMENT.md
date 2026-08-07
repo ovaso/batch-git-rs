@@ -55,9 +55,16 @@ artifacts on Linux, macOS, and Windows. It also publishes a downloadable LCOV co
 `v*` tag triggers GitHub Release archives containing completions and the license, per-file and
 combined SHA-256 checksums, installers, and GitHub build provenance attestations.
 
+The protected `main` branch accepts changes through pull requests only. Version and changelog
+updates must merge and pass the required CI checks before the release tag is created. The Release
+workflow validates that its `v*` tag already exists in the remote repository before starting the
+platform matrix; manual dispatch is only for retrying an existing tag. Runs for the same tag are
+serialized so concurrent dispatches cannot race while publishing one GitHub Release.
+
 Release builds must also inspect dynamic dependencies to ensure nothing links unexpectedly to
 Homebrew, another package manager, or a non-system absolute path from the build host. Use
-`otool -L target/release/batch-git` on macOS or `ldd target/release/batch-git` on Linux.
+`otool -L target/release/batch-git` on macOS or `ldd target/release/batch-git` on Linux. The CI and
+Release platform matrices record these inspections in their job logs.
 
 `tests/mvp.rs` covers the primary end-to-end workflows. Changes to add/commit/unstage should cover
 the index, working tree, unborn branches, conflicts, detached HEAD, hooks, and partial success.
@@ -100,6 +107,8 @@ When adding or changing CLI arguments, check together:
 - [ ] Dynamic dependencies contain no private build-host or package-manager absolute paths.
 - [ ] `cargo deny check advisories bans licenses sources` passes.
 - [ ] Linux, macOS, and Windows release builds pass in CI.
+- [ ] The release commit reached `main` through a pull request and all required checks passed.
+- [ ] The remote `v*` tag points at that exact merged release commit.
 - [ ] The tag, GitHub Release, binary names, and SHA-256 checksums agree.
 - [ ] `gh attestation verify <archive> --repo livenv/batch-git` verifies the release archive.
 - [ ] `sh -n install.sh`, the PowerShell parser, and all four completion checks pass.

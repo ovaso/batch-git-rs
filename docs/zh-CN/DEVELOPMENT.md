@@ -51,9 +51,14 @@ Linux 上分别对默认与无默认 features 执行完整质量门禁，并在 
 release 产物；它还会生成可下载的 LCOV 覆盖率报告。tag `v*` 触发带补全和许可证的 GitHub
 Release 归档、逐文件及统一 SHA-256、安装器和 GitHub build provenance attestation。
 
+受保护的 `main` 只通过 pull request 接收变更。版本号与 changelog 修改必须先合并并通过必需的
+CI 检查，之后才能创建 release tag。Release workflow 会在启动平台矩阵前验证 `v*` tag 已存在
+于远端；手动触发只用于重试已有 tag。同一 tag 的运行会串行执行，避免并发触发争抢发布同一个
+GitHub Release。
+
 发布构建还应检查动态依赖，确保没有意外链接本机构建环境中的 Homebrew、包管理器
 或其他非系统绝对路径。macOS 可使用 `otool -L target/release/batch-git`，Linux 可
-使用 `ldd target/release/batch-git`。
+使用 `ldd target/release/batch-git`。CI 与 Release 的平台矩阵会把检查结果记录在 job 日志中。
 
 `tests/mvp.rs` 覆盖主要端到端工作流；add/commit/unstage 变更应覆盖 index、工作树、unborn、
 冲突、detached HEAD、hook 和部分成功边界。各模块内单元测试覆盖解析、清单校验、输出和平台
@@ -99,6 +104,8 @@ Release 归档、逐文件及统一 SHA-256、安装器和 GitHub build provenan
 - [ ] 发布产物动态依赖不包含构建机私有或包管理器绝对路径。
 - [ ] `cargo deny check advisories bans licenses sources` 通过；
 - [ ] CI 的 Linux、macOS、Windows release 构建均通过；
+- [ ] release 提交通过 pull request 进入 `main`，且所有必需检查均通过；
+- [ ] 远端 `v*` tag 精确指向该合并后的 release 提交；
 - [ ] tag、GitHub Release、二进制名与 SHA-256 校验和相互对应；
 - [ ] `gh attestation verify <archive> --repo livenv/batch-git` 能验证发布归档；
 - [ ] `sh -n install.sh`、PowerShell parser 和四种补全文件检查通过；

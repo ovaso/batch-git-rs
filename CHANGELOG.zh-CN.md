@@ -16,6 +16,7 @@
 
 ### Changed
 
+- GitHub Actions 改用受支持的 macOS 15 runner 标签；同一分支或 PR 的过期 CI 会被取消；release 会在启动平台构建前验证远端 tag，并串行处理同一 tag 的发布运行。
 - 将文档声明和 CI 验证的最低 Rust 版本从 1.85 提升到 1.88，与当前源码使用的语言特性保持一致。
 - 将命令编排按 plan、自动化发现、工作区生命周期、只读查询、同步/远端、暂存提交、分支与 Git
   透传拆分为独立模块；工作区生命周期进一步分离 clone、scan、restore 和清单 membership，只读
@@ -40,6 +41,7 @@
 
 ### Validation
 
+- CI 与 Release 平台构建会记录 Linux/macOS 动态依赖检查结果；贡献指南补充了受保护主分支的 PR 流程与合并后打 tag 的发布流程。
 - 增加顶层扁平命令面与完整 capabilities 命令名册回归，防止后续内部整理意外改名或引入嵌套路径。
 - 增加无默认 features 的编译、CLI 命令面和 capabilities 名册验证；默认 features 继续执行完整
   schedule、automation protocol 与 MVP 回归。
