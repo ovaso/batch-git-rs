@@ -7,6 +7,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-07
+
 ### Added
 
 - Release archives now include `LICENSE`, English and Simplified Chinese READMEs, and Bash/Zsh/Fish/PowerShell completions. New macOS/Linux and Windows user-directory installers require an explicit version, never use sudo, and verify SHA-256. The release workflow signs final archives with GitHub build provenance attestations and publishes cargo-binstall release metadata.
