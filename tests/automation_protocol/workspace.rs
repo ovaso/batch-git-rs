@@ -145,7 +145,7 @@ fn workspace_schema_keeps_defaulted_fields_optional() {
 
     assert_eq!(
         schema["$id"],
-        "https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json"
+        "https://github.com/livenv/batch-git/schemas/workspace-v1.json"
     );
     assert_schema_requires(schema, &["version", "created_at", "updated_at"]);
     assert_schema_omits_required(schema, &["repositories", "schedules"]);
@@ -174,7 +174,7 @@ fn operation_result_schema_requires_the_nullable_error_field() {
 
     assert_eq!(
         schema["$id"],
-        "https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json"
+        "https://github.com/livenv/batch-git/schemas/operation-result-v1.json"
     );
     assert_schema_requires(
         schema,

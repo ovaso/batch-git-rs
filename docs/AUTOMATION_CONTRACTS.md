@@ -251,9 +251,10 @@ filled in. It accepts omitted defaults such as empty `repositories` / `schedules
 consumers should validate core fields while allowing future additions.
 
 The canonical schema identifiers are
-`https://github.com/ovaso/batch-git-rs/schemas/operation-result-v1.json` and
-`https://github.com/ovaso/batch-git-rs/schemas/workspace-v1.json`. Treat `$id` as the stable schema
-identifier returned by the binary; obtain the actual current document through the `schema` command.
+`https://github.com/livenv/batch-git/schemas/operation-result-v1.json` and
+`https://github.com/livenv/batch-git/schemas/workspace-v1.json`. These legacy namespace values are
+stable protocol identifiers, not repository download links, and therefore remain unchanged after
+the repository move. Obtain the actual current document through the `schema` command.
 
 ## Command coverage and legacy JSON
 
