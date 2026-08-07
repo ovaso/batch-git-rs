@@ -10,7 +10,7 @@
 `workspace.toml` manifest to manage multiple independent Git repositories; the workspace itself
 does not need to be a Git repository.
 
-Latest released version: `0.4.4`.
+Latest released version: `0.4.5`.
 
 ## Highlights
 

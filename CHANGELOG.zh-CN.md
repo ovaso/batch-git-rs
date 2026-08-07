@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-08-07
+
 ### Fixed
 
 - 修正包元数据、安装器下载、release/attestation 链接和自动化 schema 标识，统一指向 `ovaso/batch-git-rs`；release badge 改为按语义版本选择最新 tag，安装文档不再在 crate 发布到 crates.io 之前宣称可直接安装。
@@ -252,7 +254,8 @@
 - 批量操作不提供跨仓库事务回滚，失败时可能部分成功；
 - 交互式 Git 子进程需使用 `--jobs 1`。
 
-[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ovaso/batch-git-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ovaso/batch-git-rs/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ovaso/batch-git-rs/compare/v0.4.1...v0.4.2
