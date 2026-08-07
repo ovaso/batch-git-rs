@@ -13,6 +13,40 @@ fn invalid_schedule_requests_keep_the_typed_machine_error_code() {
 }
 
 #[test]
+fn native_run_logs_execution_boundaries_and_performance_metadata() {
+    let fixture = WorkspaceFixture::new();
+    fixture.add_daily_sync_schedule();
+    let state_directory = fixture.workspace.join("native-run-log-state");
+
+    let output = batch_git(&fixture.workspace)
+        .env("BATCH_GIT_STATE_DIR", &state_directory)
+        .args(["schedule", "native-run", "nightly-sync", "--log"])
+        .output()
+        .expect("run logged native schedule");
+    assert_eq!(output.status.code(), Some(0));
+
+    let logs_root = state_directory.join("logs");
+    let workspace_log_directory = fs::read_dir(&logs_root)
+        .expect("read log root")
+        .next()
+        .expect("one workspace log directory")
+        .expect("read workspace log directory")
+        .path()
+        .join("nightly-sync");
+    for log_name in ["stdout.log", "stderr.log"] {
+        let log =
+            fs::read_to_string(workspace_log_directory.join(log_name)).expect("read schedule log");
+        assert!(log.contains("event=started"));
+        assert!(log.contains("action=sync"));
+        assert!(log.contains("started_at="));
+        assert!(log.contains("event=finished"));
+        assert!(log.contains("finished_at="));
+        assert!(log.contains("duration_ms="));
+        assert!(log.contains("exit_code=0"));
+    }
+}
+
+#[test]
 fn native_run_apply_rejects_a_stale_revision_before_starting_its_child() {
     let fixture = WorkspaceFixture::new();
     fixture.add_daily_sync_schedule();

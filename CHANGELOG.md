@@ -10,6 +10,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ### Changed
 
 - Renamed the hidden runtime workspace lock from `.workspace.lock` to `.batchspace.lock` so it shares the manifest's collision-resistant name. The lock file remains after use; only the operating-system lock is released when its file handle closes, avoiding delete/recreate races between concurrent processes.
+- Logged scheduled runs now write UTC start/end timestamps, duration in milliseconds, action, jobs, and child exit code to both log streams. launchd and systemd logged definitions now share the `native-run` launcher already used by Windows, so the format is consistent across platforms.
 
 ## [1.0.0] - 2026-08-07
 

@@ -303,4 +303,39 @@ mod tests {
         assert_eq!(windows_argument("Asia/Shanghai"), "Asia/Shanghai");
         assert_eq!(windows_argument("value with space"), "\"value with space\"");
     }
+
+    #[test]
+    fn logged_artifacts_route_through_native_run_on_every_platform() {
+        let root = tempfile::tempdir().unwrap();
+        let schedule = ScheduleRecord {
+            name: "nightly-sync".to_owned(),
+            enabled: true,
+            action: ScheduleAction::Sync,
+            at: Some("02:30".to_owned()),
+            every: None,
+            cron: None,
+            timezone: "local".to_owned(),
+            overlap: ScheduleOverlap::Skip,
+            scope: ScheduleScope {
+                all: true,
+                repositories: Vec::new(),
+            },
+        };
+
+        let launchd =
+            build_artifact_with_logging(root.path(), &schedule, NativePlatform::Launchd, true)
+                .unwrap();
+        assert!(launchd.files[0].content.contains(
+            "<string>schedule</string><string>native-run</string><string>nightly-sync</string><string>--log</string>"
+        ));
+
+        let systemd =
+            build_artifact_with_logging(root.path(), &schedule, NativePlatform::Systemd, true)
+                .unwrap();
+        assert!(
+            systemd.files[0].content.contains("ExecStart=")
+                && systemd.files[0].content.contains("schedule native-run")
+                && systemd.files[0].content.contains("--log")
+        );
+    }
 }

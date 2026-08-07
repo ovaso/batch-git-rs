@@ -40,7 +40,10 @@ results must not assume captured output is complete.
 
 Registered native schedules enter through the hidden `schedule native-run` action, which always
 passes `--non-interactive` to the actual `schedule run` child. Authentication that depends on terminal
-prompts is unsupported.
+prompts is unsupported. When registration enables schedule logging, each log stream also receives
+human-oriented `started` and final `finished` / `failed` boundary records with UTC timestamps,
+duration, action, jobs, and exit code. These text logs are diagnostics, not a machine protocol;
+automation must continue to decide from JSON receipts and process exit codes.
 
 Legacy subcommand `--json` preserves its old top-level shape: for example, `list --json` is an object
 and `schedule list --json` is an array. It exists only for compatibility; new callers should use

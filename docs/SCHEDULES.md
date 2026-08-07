@@ -203,6 +203,11 @@ Disabling logging also requires registration:
 BATCH_GIT_SCHEDULE_LOG=false batch-git schedule register nightly-sync
 ```
 
+When logging is enabled, all three scheduler platforms enter through `schedule native-run --log`.
+Each `stdout.log` and `stderr.log` therefore contains a `started` record and a final `finished` or
+`failed` record with UTC `started_at` / `finished_at`, `duration_ms`, the schedule action and jobs,
+and the child exit code. The child command's normal output remains between those records.
+
 The variable is read during `generate`/`register` and embedded in the native definition. Manual
 `schedule run` always produces normal output and ignores this setting. Registered native tasks enter
 through the hidden `schedule native-run` action. Regardless of the outer output mode, it forces
@@ -266,7 +271,7 @@ schtasks.exe /Run /TN '<TASK-ID>'
 
 Windows native-definition XML lives under `tasks/windows` in the batch-git state directory. Tasks
 run as the current interactive user. When schedule logging is enabled, batch-git's internal launcher
-appends output to `stdout.log` and `stderr.log` in the state directory.
+appends execution-boundary records and child output to `stdout.log` and `stderr.log` in the state directory.
 
 A useful troubleshooting order is: confirm the declaration is enabled, run `doctor`, register again,
 check that `NATIVE LOADED` is yes, check that `DEFINITION MATCHES` is yes, and then inspect the exit

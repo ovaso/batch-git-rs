@@ -34,12 +34,19 @@ pub(super) fn build(context: ArtifactContext<'_>) -> Result<NativeArtifact> {
             )
         },
     );
+    let command_arguments = if log_enabled {
+        format!(
+            "schedule native-run {} --log",
+            systemd_quote(&schedule.name)
+        )
+    } else {
+        format!("schedule run {}", systemd_quote(&schedule.name))
+    };
     let service = format!(
-        "[Unit]\nDescription=batch-git schedule {}\n\n[Service]\nType=oneshot\nEnvironment=NO_COLOR=1\nEnvironment={}\n{timezone_environment}\nExecStart={} schedule run {}\nStandardOutput={}\nStandardError={}\n",
+        "[Unit]\nDescription=batch-git schedule {}\n\n[Service]\nType=oneshot\nEnvironment=NO_COLOR=1\nEnvironment={}\n{timezone_environment}\nExecStart={} {command_arguments}\nStandardOutput={}\nStandardError={}\n",
         schedule.name,
         systemd_quote(&format!("BATCH_GIT_WORKSPACE={}", root.display())),
         systemd_quote(&executable.display().to_string()),
-        systemd_quote(&schedule.name),
         stdout
             .as_ref()
             .map(|path| systemd_quote(&format!("append:{}", path.display())))
