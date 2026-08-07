@@ -7,11 +7,19 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+### Changed
+
+- Documented the repository-only distribution and trust policy: generated code is not treated as
+  release readiness, public package registries are intentionally excluded, and this GitHub
+  repository plus its Releases define the project's distribution trust boundary.
+- Replaced fixed release-support, response-time, disclosure, and backport promises with statements
+  of current CI validation scope and best-effort maintainer availability.
+
 ## [0.4.5] - 2026-08-07
 
 ### Fixed
 
-- Corrected repository metadata, installer downloads, and release and attestation links to use `ovaso/batch-git-rs`, while preserving the legacy v1 automation schema identifiers for compatibility. Release badges now select the latest semantic-version tag, and installation documentation no longer advertises the crate before it is published to crates.io.
+- Corrected repository metadata, installer downloads, and release and attestation links to use `ovaso/batch-git-rs`, while preserving the legacy v1 automation schema identifiers for compatibility. Release badges now select the latest semantic-version tag, and installation documentation no longer advertises crates.io installation.
 
 ## [0.4.4] - 2026-08-07
 

@@ -9,8 +9,6 @@
 `batch-git` 是一个多仓库 Git 工作区管理工具。它用一份可复制、可审阅的
 `workspace.toml` 管理多个相互独立的 Git 仓库，工作区本身不需要是 Git 仓库。
 
-当前封版版本：`0.4.5`。
-
 ## 主要能力
 
 - 扫描已有目录并生成工作区清单；
@@ -26,10 +24,24 @@
 工具也不会在未明确请求时自动 merge、rebase、stash、reset 或清理工作树。
 clone 或 restore 失败/超时时也不会递归删除目标目录；保留的内容须由用户检查并明确处理后才能重试。
 
+## 分发与信任
+
+生成代码很廉价，维护承诺并不廉价。
+
+因此，本项目不向公共包仓库作出自己无法长期兑现的质量、维护和安全承诺。
+
+本项目可能使用 AI 辅助开发，但不会把“能够运行”当作“值得发布”的证明。代码的可信度来自
+明确的安全边界、测试、审查、文档和可追溯的发布流程，而不是生成方式。
+
+`batch-git` 有意不发布到 crates.io 或其他软件包注册表，也不占用无法持续负责的公共包名。
+本 GitHub 仓库及其 Releases 是唯一权威来源；其他渠道出现的同名软件包不在本项目的发布流程
+与信任边界内。
+
 ## 安装
 
-正式 release 为 Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 提供预编译归档、
-SHA-256 校验和及 GitHub artifact attestation。安装器不会使用 `sudo`，且要求明确版本：
+带 tag 的 GitHub Release 可能包含 Linux x86_64、macOS x86_64/arm64 和 Windows x86_64
+预编译归档、SHA-256 校验和及 GitHub artifact attestation。其中的安装器不会使用 `sudo`，
+且要求明确版本：
 
 ```sh
 # macOS / Linux：先下载并审阅安装器，再安装到 ~/.local。
@@ -56,8 +68,7 @@ Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Vers
 gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-当前 crate 尚未发布到 crates.io。请使用上述 release 安装器，或在已 checkout 的源码目录中
-使用 Rust 工具链和系统 Git 构建：
+从源码构建时，请在已 checkout 的源码目录中使用 Rust 工具链和系统 Git：
 
 ```sh
 # 安装当前 checkout。
@@ -74,7 +85,7 @@ cargo build --release --no-default-features
 BATCH_GIT_INSTALL_PATH="$HOME/.local/bin" ./build.sh
 ```
 
-release 归档同时包含 Bash、Zsh、Fish 和 PowerShell 补全；安装器会把当前平台的补全文件复制到
+当前 release 归档包含 Bash、Zsh、Fish 和 PowerShell 补全；安装器会把当前平台的补全文件复制到
 用户前缀下。若 shell 未自动发现该前缀，请按[用户手册](docs/zh-CN/USER_GUIDE.md#2-安装与验证)加载。
 
 默认 feature 集包含 `schedule`，因此普通构建的命令面保持完整。关闭默认 features 只影响当前
@@ -87,7 +98,7 @@ release 归档同时包含 Bash、Zsh、Fish 和 PowerShell 补全；安装器�
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-安装产物和正式命令名始终是 `batch-git`；`bit` 仅是用户可自行配置的 shell alias，示例见
+安装产物名为 `batch-git`；`bit` 仅是用户可自行配置的 shell alias，示例见
 [用户手册](docs/zh-CN/USER_GUIDE.md#2-安装与验证)。
 
 ## 快速开始
@@ -193,7 +204,7 @@ Git 子进程，不能保证终止其认证或传输后代进程。
 - [定时任务](docs/zh-CN/SCHEDULES.md)：声明、验证、注册、日志和平台差异；
 - [开发与发布](docs/zh-CN/DEVELOPMENT.md)：验证命令、实现边界和封版检查；
 - [架构说明](docs/zh-CN/ARCHITECTURE.md)：模块职责、并发、锁与 Git 执行边界；
-- [兼容性](docs/zh-CN/COMPATIBILITY.md)：Rust、Git、平台与调度器支持矩阵；
+- [兼容性](docs/zh-CN/COMPATIBILITY.md)：Rust、Git、平台与调度器验证矩阵；
 - [自动化契约](docs/zh-CN/AUTOMATION_CONTRACTS.md)：面向 CI 和 agent 的版本化 JSON、JSONL、
   plan/apply、schema 与退出码约定；
 - [变更记录](CHANGELOG.zh-CN.md)：版本级交付内容和已知限制。

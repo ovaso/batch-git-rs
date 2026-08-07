@@ -42,7 +42,7 @@ cargo build --locked --release --no-default-features
 ./target/release/batch-git schedule --help
 ```
 
-The default `schedule` feature preserves the official release command surface.
+The default `schedule` feature preserves the command surface used by GitHub Release builds.
 `--no-default-features` validates the minimal build. That build must continue to read and preserve
 schedule declarations, but neither `capabilities.commands` nor top-level help may claim the
 uncompiled `schedule` command exists. With the feature enabled, all three platform artifact

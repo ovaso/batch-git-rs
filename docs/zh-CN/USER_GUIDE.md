@@ -34,10 +34,11 @@ workspace/
   使用 Task Scheduler。Windows 首版不支持 cron 声明。
 - schedule 时区通过 `BATCH_GIT_TZ` 设置；未设置时使用系统时区。
 
-### 2.1 预编译 release
+### 2.1 GitHub Release 产物
 
-Linux x86_64、macOS x86_64/arm64 和 Windows x86_64 可使用正式 release。安装器要求明确
-`vX.Y.Z` 版本、验证 SHA-256、不调用 `sudo`，默认安装到用户目录：
+带 tag 的 GitHub Release 可能包含 Linux x86_64、macOS x86_64/arm64 和 Windows x86_64
+预编译归档。其中的安装器要求明确 `vX.Y.Z` 版本、验证 SHA-256、不调用 `sudo`，默认安装到
+用户目录：
 
 ```sh
 VERSION=vX.Y.Z
@@ -58,13 +59,14 @@ Invoke-WebRequest "https://github.com/ovaso/batch-git-rs/releases/download/$Vers
 gh attestation verify batch-git-<target>.tar.gz --repo ovaso/batch-git-rs
 ```
 
-归档包含 `completions/`。Unix 安装器会安装 Bash、Zsh 和 Fish 补全；如果自定义前缀不在 shell
+当前归档包含 `completions/`。Unix 安装器会安装 Bash、Zsh 和 Fish 补全；如果自定义前缀不在 shell
 默认搜索路径中，把 `<prefix>/share/zsh/site-functions` 加入 `fpath`，或直接 source 对应文件。
 PowerShell 可 dot-source `<prefix>\share\batch-git\completions\batch-git.ps1`。
 
 ### 2.2 从源码构建
 
-当前 crate 尚未发布到 crates.io。从源码安装需要已 checkout 的仓库和 Rust 1.88 或更新工具链：
+本项目有意不发布到 crates.io 或其他软件包注册表。从源码安装需要已 checkout 的本仓库和
+Rust 1.88 或更新工具链：
 
 ```sh
 cargo install --locked --path .

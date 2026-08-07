@@ -7,11 +7,18 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 记录仅以本仓库为边界的分发与信任原则：不把生成代码等同于可发布状态，有意不进入公共包
+  仓库，并以本 GitHub 仓库及其 Releases 界定项目的分发信任范围。
+- 将固定的发布支持、响应时限、披露和旧版本回移承诺，改为陈述当前 CI 验证范围与维护者精力
+  允许时的尽力处理。
+
 ## [0.4.5] - 2026-08-07
 
 ### Fixed
 
-- 修正包元数据、安装器下载和 release/attestation 链接，使其指向 `ovaso/batch-git-rs`，同时为兼容性保留旧的 v1 自动化 schema 标识；release badge 改为按语义版本选择最新 tag，安装文档不再在 crate 发布到 crates.io 之前宣称可直接安装。
+- 修正包元数据、安装器下载和 release/attestation 链接，使其指向 `ovaso/batch-git-rs`，同时为兼容性保留旧的 v1 自动化 schema 标识；release badge 改为按语义版本选择最新 tag，安装文档不再宣称可从 crates.io 安装。
 
 ## [0.4.4] - 2026-08-07
 

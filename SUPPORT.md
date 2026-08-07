@@ -2,6 +2,9 @@
 
 [简体中文](SUPPORT.zh-CN.md)
 
+This file identifies the appropriate reporting channels; it does not create a response-time or
+resolution commitment.
+
 - Usage questions and documentation improvements: open a GitHub Discussion or issue.
 - Reproducible defects: use the bug report template and include the version, operating system, Git version, and a minimal reproduction.
 - Security issues: follow [SECURITY.md](SECURITY.md) and do not disclose them publicly.
