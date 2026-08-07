@@ -7,6 +7,8 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-08-07
+
 ### Fixed
 
 - Corrected repository metadata, installer downloads, release and attestation links, and automation schema identifiers to use `ovaso/batch-git-rs`. Release badges now select the latest semantic-version tag, and installation documentation no longer advertises the crate before it is published to crates.io.
@@ -192,7 +194,8 @@ First stable release.
 - Batch operations provide no cross-repository transactional rollback and may partially succeed.
 - Interactive Git children require `--jobs 1`.
 
-[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/ovaso/batch-git-rs/compare/v0.4.5...HEAD
+[0.4.5]: https://github.com/ovaso/batch-git-rs/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ovaso/batch-git-rs/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ovaso/batch-git-rs/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ovaso/batch-git-rs/compare/v0.4.1...v0.4.2
