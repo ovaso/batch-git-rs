@@ -8,7 +8,7 @@
 - 系统 Git CLI：add、commit、restore/read-tree unstage、clone、fetch、push、merge、pull
   以及 `--` 后的精确透传；
 - `batchspace.toml`：声明式、可复制的工作区清单；
-- `.workspace.lock`：串行化可能修改 Git 状态或清单的 batch-git 进程；
+- `.batchspace.lock`：隐藏的运行期协调文件，用于串行化可能修改 Git 状态或清单的 batch-git 进程。进程退出后文件保留，但操作系统锁会随文件句柄释放；
 - `automation result v1`：全局 `--output json|jsonl` 的稳定协议；旧子命令 `--json` 只作兼容；
 - Rayon：有界并发和稳定结果顺序；
 - clap：严格的内建命令边界和命令帮助。

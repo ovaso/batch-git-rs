@@ -74,7 +74,7 @@ fn native_run_apply_preserves_a_stale_error_detected_after_the_child_acquires_th
         .truncate(false)
         .read(true)
         .write(true)
-        .open(fixture.workspace.join(".workspace.lock"))
+        .open(fixture.workspace.join(".batchspace.lock"))
         .expect("open workspace lock");
     lock.lock_exclusive().expect("hold workspace lock");
 

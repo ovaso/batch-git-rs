@@ -5,6 +5,12 @@
 本文遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，并采用
 [语义化版本](https://semver.org/lang/zh-CN/)。当前项目版本见 `Cargo.toml`。
 
+## [Unreleased]
+
+### Changed
+
+- 将隐藏的运行期工作区锁从 `.workspace.lock` 更名为 `.batchspace.lock`，使其与避免冲突的清单名称保持一致。锁文件会在使用后保留；文件句柄关闭时只释放操作系统锁，从而避免并发进程间删除并重建锁文件的竞态。
+
 ## [1.0.0] - 2026-08-07
 
 ### Changed

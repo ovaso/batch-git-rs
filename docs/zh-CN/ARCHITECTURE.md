@@ -68,7 +68,7 @@ records，且不把子 Git stdout/stderr 放入协议。`--output jsonl` 在相�
 
 ## 一致性与副作用
 
-所有可能执行 Git 或写入清单的工作流都使用工作区 `.workspace.lock`。清单写入先写同目录临时
+所有可能执行 Git 或写入清单的工作流都使用工作区隐藏的 `.batchspace.lock`。清单写入先写同目录临时
 文件，再同步并原子替换。批量命令不是跨仓库事务：每个仓库独立完成或失败，最终报告必须保留
 success、skipped 与 failed 的差别。
 
@@ -88,7 +88,7 @@ remote-tracking 来源分支，而不移动本地来源分支。两者都可能�
 
 commit 会遵循仓库配置的 hook、身份和签名程序，它们可能产生 batch-git 无法分类的本地或外部
 副作用。系统 Git 的单仓库 index/ref lock 与工作区锁共同降低并发冲突，但外部原生 Git 不遵循
-`.workspace.lock`。批量命令不是事务：某些仓库已创建提交后，后续仓库失败或超时不会触发自动
+`.batchspace.lock`。批量命令不是事务：某些仓库已创建提交后，后续仓库失败或超时不会触发自动
 reset、amend、rebase 或其他回滚。直接 Git child 超时后，hook、filter 或签名后代仍可能存活，
 调用方必须重新检查 HEAD、index 和工作树。
 

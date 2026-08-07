@@ -72,7 +72,7 @@ all = true
 - 时间必须是合法 RFC 3339；
 - HTTP(S) URL 中的用户信息在写入前移除；
 - 写入采用同目录临时文件、同步和原子替换；
-- 会执行 Git 或修改清单的进程使用 `.workspace.lock`；
+- 会执行 Git 或修改清单的进程使用隐藏的运行期 `.batchspace.lock`；进程退出后文件保留，所有进程因而协调同一个稳定文件；操作系统锁会随文件句柄释放；
 - 程序会规范化 TOML 格式，不保证保留手写注释和原始排版。
 
 `schedules` 可以整体省略，等同于空列表。手写 schedule 时也可省略有默认值的 `enabled`、
@@ -128,7 +128,7 @@ batch-git --output json env list
 
 ## 6. 本地状态文件
 
-`.workspace.lock` 位于工作区根目录，用于串行化可能冲突的操作。schedule 的注册
+`.batchspace.lock` 位于工作区根目录，用于串行化可能冲突的操作。它是运行期协调文件，不是清单状态：batch-git 不会在每次操作完成后删除它，因为删除并重建锁文件会在并发进程间引入竞态。schedule 的注册
 状态和可选日志位于用户 state 目录，不写入共享清单：
 
 - 显式设置：`BATCH_GIT_STATE_DIR`；

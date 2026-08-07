@@ -284,7 +284,7 @@ fn validate_repository_paths(root: &Path, workspace: &Workspace) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::repository_path;
+    use super::{LOCK_FILE, WorkspaceLock, repository_path};
     use anyhow::Result;
     use tempfile::TempDir;
 
@@ -296,6 +296,23 @@ mod tests {
         assert_eq!(
             repository_path(workspace.path(), "nested/repository")?,
             expected
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_lock_uses_the_hidden_batchspace_name_and_keeps_its_inode() -> Result<()> {
+        let workspace = TempDir::new()?;
+        let lock_path = workspace.path().join(LOCK_FILE);
+
+        let lock = WorkspaceLock::acquire(workspace.path())?;
+        assert_eq!(LOCK_FILE, ".batchspace.lock");
+        assert!(lock_path.is_file());
+
+        drop(lock);
+        assert!(
+            lock_path.is_file(),
+            "unlocking releases the OS lock but retains the coordination file"
         );
         Ok(())
     }

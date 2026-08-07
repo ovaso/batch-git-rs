@@ -5,6 +5,12 @@
 This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 [Semantic Versioning](https://semver.org/). See `Cargo.toml` for the current package version.
 
+## [Unreleased]
+
+### Changed
+
+- Renamed the hidden runtime workspace lock from `.workspace.lock` to `.batchspace.lock` so it shares the manifest's collision-resistant name. The lock file remains after use; only the operating-system lock is released when its file handle closes, avoiding delete/recreate races between concurrent processes.
+
 ## [1.0.0] - 2026-08-07
 
 ### Changed
