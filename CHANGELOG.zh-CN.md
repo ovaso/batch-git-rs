@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-08-07
+
 ### Added
 
 - release 归档加入 `LICENSE`、英文/简体中文 README 和 Bash/Zsh/Fish/PowerShell 补全；新增显式版本、无 sudo、
